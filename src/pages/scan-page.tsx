@@ -217,41 +217,28 @@ export function ScanPage() {
 
   return (
     <AppShell hideMobileHeader>
-      <PageHeading
-        eyebrow="QR CHECK"
-        title="QR 진단"
-        description="카메라에 QR을 비추면 연결 주소를 열기 전에 먼저 확인합니다."
-        action={<Badge className="hidden sm:inline-flex"><Zap className="size-3.5" /> Gemini AI 분석</Badge>}
-      />
-
-      <Card className="mx-auto flex min-h-[calc(100dvh-13rem)] max-w-3xl overflow-hidden border-white/85 bg-white/72 p-3 backdrop-blur-xl md:min-h-0 md:p-4">
-        <CardContent className="flex flex-1 flex-col gap-3 p-0">
-          <input
-            ref={cameraInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={(event) => { void handleQrImage(event.target.files?.[0]); event.currentTarget.value = '' }}
-          />
-          <input
-            ref={galleryInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(event) => { void handleQrImage(event.target.files?.[0]); event.currentTarget.value = '' }}
-          />
-
-          <div className="px-1 pt-1">
-            <h2 className="text-base font-extrabold tracking-[-0.03em]">의심스러운 QR, 열기 전에 확인하세요</h2>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">카메라에 QR을 비추면 자동으로 인식해 분석하고, 주소는 아래에 직접 입력할 수 있어요.</p>
-          </div>
+      <div className="mx-auto flex min-h-[calc(100dvh-10.5rem)] max-w-xl flex-col gap-3 md:min-h-[calc(100dvh-8rem)]">
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(event) => { void handleQrImage(event.target.files?.[0]); event.currentTarget.value = '' }}
+        />
+        <input
+          ref={galleryInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(event) => { void handleQrImage(event.target.files?.[0]); event.currentTarget.value = '' }}
+        />
 
           <button
             type="button"
             disabled={isBusy}
             onClick={() => { if (cameraState !== 'active') cameraInputRef.current?.click() }}
-            className="relative block min-h-60 w-full flex-1 overflow-hidden rounded-[24px] bg-[linear-gradient(145deg,#26364e,#607188_52%,#27384d)] text-left transition-transform active:scale-[0.995] disabled:cursor-wait md:h-72 md:flex-none"
+            className="relative block min-h-60 w-full flex-1 overflow-hidden rounded-[24px] bg-[linear-gradient(145deg,#26364e,#607188_52%,#27384d)] text-left transition-transform active:scale-[0.995] disabled:cursor-wait"
             aria-label={cameraState === 'active' ? '카메라에 QR을 비춰주세요' : '카메라로 QR 촬영하기'}
           >
             <div className="absolute inset-0 opacity-35 [background-image:radial-gradient(circle_at_30%_20%,#b7dfff_0,transparent_28%),radial-gradient(circle_at_80%_70%,#cfc5ff_0,transparent_24%)]" />
@@ -346,63 +333,8 @@ export function ScanPage() {
             </Button>
           </div>
 
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-            <input
-              type="url"
-              inputMode="url"
-              aria-label="진단할 URL"
-              value={payload}
-              disabled={isBusy}
-              onChange={(event) => setPayload(event.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Enter' && canVerifyUrl) void runVerification(payload) }}
-              placeholder="https://example.com"
-              className="h-11 min-w-0 rounded-xl border border-border bg-white/80 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-4 focus:ring-primary/10 disabled:opacity-50 sm:px-4"
-            />
-            <Button disabled={!canVerifyUrl || isBusy} onClick={() => void runVerification(payload)} className="h-11 px-3 sm:px-5">
-              {isLoading ? <><LoaderCircle className="animate-spin" /> 검사 중</> : <><ShieldCheck /> 안전 진단</>}
-            </Button>
-          </div>
           {error && <p role="alert" className="rounded-xl bg-danger/10 px-3 py-2 text-xs font-semibold leading-5 text-danger">{error}</p>}
-
-          {history.length > 0 && (
-            <div className="rounded-2xl bg-secondary/50 p-2.5">
-              <p className="flex items-center gap-1.5 px-1 pb-1.5 text-[11px] font-bold tracking-[0.06em] text-muted-foreground"><Clock3 className="size-3" /> 최근 검사</p>
-              <div className="space-y-1">
-                {visibleHistory.map((entry) => (
-                  <button
-                    key={entry.checkedAt}
-                    type="button"
-                    disabled={isBusy}
-                    onClick={() => navigate('/result', { state: { result: entry.result } })}
-                    className="flex w-full items-center gap-2.5 rounded-xl bg-white/75 px-3 py-2 text-left transition hover:bg-white disabled:opacity-50"
-                  >
-                    <span className={`size-2 shrink-0 rounded-full ${verdictDot[entry.verdict]}`} />
-                    <span className="min-w-0 flex-1 truncate text-xs font-semibold">{entry.host}</span>
-                    <span className="shrink-0 text-[11px] font-bold text-muted-foreground">{entry.score}점 · {verdictLabel[entry.verdict]}</span>
-                    <span className="shrink-0 text-[10px] text-muted-foreground/70">{formatCheckedAt(entry.checkedAt)}</span>
-                    <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/50" />
-                  </button>
-                ))}
-              </div>
-              {history.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllHistory((current) => !current)}
-                  className="mt-1 flex w-full items-center justify-center gap-1 rounded-xl py-1.5 text-[11px] font-bold text-primary transition hover:bg-white/60"
-                >
-                  {showAllHistory ? '접기' : `이전 검사 ${history.length - 1}건 더 보기`}
-                  <ChevronDown className={`size-3.5 transition-transform ${showAllHistory ? 'rotate-180' : ''}`} />
-                </button>
-              )}
-            </div>
-          )}
-
-          <div className="mt-auto flex items-center gap-3 rounded-2xl bg-primary/7 px-3.5 py-3 text-muted-foreground">
-            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-white/80 text-primary shadow-sm"><LockKeyhole className="size-4" /></span>
-            <p className="text-[11px] leading-4"><strong className="block text-xs text-foreground">촬영 이미지는 기기에서만 읽어요</strong>QR에서 추출한 주소만 안전 진단에 사용합니다.</p>
-          </div>
-        </CardContent>
-      </Card>
+      </div>
     </AppShell>
   )
 }
