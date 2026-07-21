@@ -1,23 +1,31 @@
 type RiskGaugeProps = {
   score?: number
+  verdict?: 'safe' | 'warn' | 'danger'
+  compact?: boolean
 }
 
-export function RiskGauge({ score = 82 }: RiskGaugeProps) {
+const colors = {
+  safe: { start: '#68d8ca', end: '#0fa6b5', track: '#e3f4f2', text: '#0fa6b5', label: '낮음' },
+  warn: { start: '#ffd166', end: '#f4a532', track: '#f8efdc', text: '#c4770c', label: '주의' },
+  danger: { start: '#ffb04d', end: '#ff4e58', track: '#f4e9e8', text: '#ff675c', label: '위험' },
+}
+
+export function RiskGauge({ score = 82, verdict = 'danger', compact = false }: RiskGaugeProps) {
   const circumference = 2 * Math.PI * 58
   const offset = circumference - (score / 100) * circumference
+  const color = colors[verdict]
 
   return (
-    <div className="relative mx-auto grid size-40 place-items-center sm:size-52 md:size-60" aria-label={`위험 점수 ${score}점`}>
-      <div className="absolute inset-5 rounded-full bg-[radial-gradient(circle,rgba(255,112,99,0.13),transparent_65%)] blur-md" />
+    <div className={`relative grid shrink-0 place-items-center ${compact ? 'size-20 sm:size-24' : 'mx-auto size-40 sm:size-52 md:size-60'}`} aria-label={`위험 점수 ${score}점`}>
+      <div className="absolute inset-5 rounded-full opacity-15 blur-md" style={{ background: color.text }} />
       <svg viewBox="0 0 140 140" className="absolute inset-0 size-full -rotate-90" aria-hidden="true">
         <defs>
           <linearGradient id="risk-gradient" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#ffb04d" />
-            <stop offset="58%" stopColor="#ff7867" />
-            <stop offset="100%" stopColor="#ff4e58" />
+            <stop offset="0%" stopColor={color.start} />
+            <stop offset="100%" stopColor={color.end} />
           </linearGradient>
         </defs>
-        <circle cx="70" cy="70" r="58" fill="none" stroke="#f4e9e8" strokeWidth="10" />
+        <circle cx="70" cy="70" r="58" fill="none" stroke={color.track} strokeWidth="10" />
         <circle
           cx="70"
           cy="70"
@@ -31,8 +39,8 @@ export function RiskGauge({ score = 82 }: RiskGaugeProps) {
         />
       </svg>
       <div className="relative text-center">
-        <strong className="block text-5xl font-black tracking-[-0.08em] text-danger sm:text-6xl md:text-7xl">{score}</strong>
-        <span className="mt-1 block text-sm font-bold text-danger">위험</span>
+        <strong className={`block font-black tracking-[-0.08em] ${compact ? 'text-2xl sm:text-3xl' : 'text-5xl sm:text-6xl md:text-7xl'}`} style={{ color: color.text }}>{score}</strong>
+        <span className={`block font-bold ${compact ? 'text-[10px]' : 'mt-1 text-sm'}`} style={{ color: color.text }}>{color.label}</span>
       </div>
     </div>
   )
