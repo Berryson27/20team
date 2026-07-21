@@ -55,6 +55,10 @@ const TRUSTED_DOMAINS = new Set([
   // 공공·통신·택배
   'gov.kr', 'korea.kr', 'epost.kr', 'kisa.or.kr', 'fss.or.kr', 'kftc.or.kr',
   'sktelecom.com', 'kt.com', 'lguplus.com', 'cjlogistics.com', 'hanjin.co.kr', 'lotteglogis.com',
+  // 언론
+  'yna.co.kr', 'chosun.com', 'joongang.co.kr', 'donga.com', 'hani.co.kr', 'khan.co.kr',
+  'mk.co.kr', 'hankyung.com', 'mt.co.kr', 'edaily.co.kr', 'sedaily.com', 'newsis.com', 'news1.kr',
+  'ytn.co.kr', 'kbs.co.kr', 'imbc.com', 'sbs.co.kr', 'jtbc.co.kr', 'yonhapnewstv.co.kr',
 ])
 
 // 브랜드 사칭 탐지: 토큰이 호스트에 있는데 공식 도메인이 아니면 사칭
@@ -105,6 +109,12 @@ const MED_RISK_TLDS = new Set(['xyz', 'shop', 'site', 'online', 'live', 'vip', '
 const SHORTENERS = new Set([
   'bit.ly', 'tinyurl.com', 't.co', 'goo.gl', 'is.gd', 'buff.ly', 'cutt.ly', 'rb.gy',
   'ow.ly', 'han.gl', 'me2.do', 'url.kr', 'vo.la', 'lrl.kr', 'c11.kr', 'zrr.kr', 'shorturl.at',
+])
+
+// QR 생성 서비스의 중개(콘텐츠 공유) 페이지 — 실제 목적지를 가리므로 단축 URL과 동일하게 취급
+const QR_INTERSTITIALS = new Set([
+  'me-qr.com', 'qrco.de', 'qr.io', 'qrfy.com', 'flowcode.com', 'qr-code-generator.com',
+  'qrs.ly', 'linktr.ee', 'qr.link', 'beaconstac.com',
 ])
 
 const FREE_HOSTS = new Set([
@@ -252,6 +262,9 @@ export function analyzeUrlLocally(rawUrl: string): LocalAnalysis {
   // R12: 단축 URL — 최종 목적지를 알 수 없다.
   if (SHORTENERS.has(registrable)) add('shortener', 15, '단축 주소 사용', '실제 목적지를 가린 단축 주소입니다. 최종 도착지를 확인해야 합니다.')
 
+  // R12-2: QR 중개 서비스 — 실제 콘텐츠 주소를 가린다.
+  if (QR_INTERSTITIALS.has(registrable)) add('qr-interstitial', 25, 'QR 중개 서비스 주소', '실제 콘텐츠를 가린 중개 페이지입니다. 광고·이동을 거친 최종 도착지를 확인해야 합니다.')
+
   // R9: 무료 호스팅·DDNS
   if (FREE_HOSTS.has(registrable)) add('free-host', 22, '무료 호스팅 주소', '누구나 만들 수 있는 무료 호스팅에 올라간 페이지입니다.')
 
@@ -271,6 +284,8 @@ export function analyzeUrlLocally(rawUrl: string): LocalAnalysis {
 
   // R16: 구조 이상 신호
   if (host.length > 45) add('long-host', 10, '비정상적으로 긴 주소', '호스트 이름이 비정상적으로 깁니다.')
+  // R16-2: 단어를 길게 이어 붙인 일회용 도메인 (portaldocarromtguiasexpress.site 류)
+  if (registrable.split('.')[0].replace(/-/g, '').length >= 20) add('long-sld', 15, '단어를 길게 이어 붙인 도메인', '단어를 길게 이어 붙인 도메인은 일회용 피싱 사이트에 자주 쓰입니다.')
   if ((registrable.split('.')[0].match(/-/g)?.length ?? 0) >= 3) add('many-hyphens', 12, '하이픈 남용 주소', '하이픈을 여러 개 이어 붙인 의심 주소입니다.')
   if (rawUrl.length > 150) add('long-url', 8, '지나치게 긴 링크', '주소 전체가 비정상적으로 깁니다.')
   if (PATH_KEYWORD_PATTERN.test(url.pathname + url.search)) add('path-keyword', 10, '로그인·계정 경로', '주소 경로가 로그인·계정 정보 입력을 가리킵니다.')
@@ -281,7 +296,7 @@ export function analyzeUrlLocally(rawUrl: string): LocalAnalysis {
   let score = Math.min(signals.reduce((sum, item) => sum + item.points, 0), 100)
 
   // R18: 약한 신호 결합 상향 — 유인 키워드·무료호스팅·단축주소가 다른 신호와 겹치면 경고선까지 올린다.
-  const comboTrigger = signals.some((item) => ['host-keyword', 'free-host', 'shortener'].includes(item.id))
+  const comboTrigger = signals.some((item) => ['host-keyword', 'free-host', 'shortener', 'qr-interstitial', 'long-sld'].includes(item.id))
   if (comboTrigger && signals.length >= 2 && score >= 25 && score < 40) score = 40
 
   return { host, registrable, trusted, score, signals }

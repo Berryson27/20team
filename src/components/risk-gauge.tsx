@@ -1,7 +1,10 @@
+import { useId } from 'react'
+
 type RiskGaugeProps = {
   score?: number
   verdict?: 'safe' | 'warn' | 'danger'
   compact?: boolean
+  tone?: 'default' | 'onColor'
 }
 
 const colors = {
@@ -10,17 +13,21 @@ const colors = {
   danger: { start: '#ffb04d', end: '#ff4e58', track: '#f4e9e8', text: '#ff675c', label: '위험' },
 }
 
-export function RiskGauge({ score = 82, verdict = 'danger', compact = false }: RiskGaugeProps) {
+export function RiskGauge({ score = 82, verdict = 'danger', compact = false, tone = 'default' }: RiskGaugeProps) {
+  const gradientId = useId()
   const circumference = 2 * Math.PI * 58
   const offset = circumference - (score / 100) * circumference
-  const color = colors[verdict]
+  const palette = colors[verdict]
+  const color = tone === 'onColor'
+    ? { start: '#ffffff', end: '#ffffff', track: 'rgba(255,255,255,0.28)', text: '#ffffff', label: palette.label }
+    : palette
 
   return (
     <div className={`relative grid shrink-0 place-items-center ${compact ? 'size-20 sm:size-24' : 'mx-auto size-40 sm:size-52 md:size-60'}`} aria-label={`위험 점수 ${score}점`}>
-      <div className="absolute inset-5 rounded-full opacity-15 blur-md" style={{ background: color.text }} />
+      {tone === 'default' && <div className="absolute inset-5 rounded-full opacity-15 blur-md" style={{ background: color.text }} />}
       <svg viewBox="0 0 140 140" className="absolute inset-0 size-full -rotate-90" aria-hidden="true">
         <defs>
-          <linearGradient id="risk-gradient" x1="0" y1="0" x2="1" y2="1">
+          <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor={color.start} />
             <stop offset="100%" stopColor={color.end} />
           </linearGradient>
@@ -31,7 +38,7 @@ export function RiskGauge({ score = 82, verdict = 'danger', compact = false }: R
           cy="70"
           r="58"
           fill="none"
-          stroke="url(#risk-gradient)"
+          stroke={`url(#${gradientId})`}
           strokeWidth="10"
           strokeLinecap="round"
           strokeDasharray={circumference}

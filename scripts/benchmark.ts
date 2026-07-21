@@ -107,6 +107,11 @@ export const samples: Sample[] = [
   { url: 'https://www.seoulartcenter.or.kr', label: 'benign', note: '문화기관' },
   { url: 'https://www.busanmuseum.or.kr', label: 'benign', note: '문화기관' },
   { url: 'https://mysunnygarden.com/about', label: 'benign', note: '개인 홈페이지' },
+  { url: 'https://www.yna.co.kr', label: 'benign', note: '언론사' },
+  { url: 'https://www.chosun.com', label: 'benign', note: '언론사' },
+  { url: 'https://www.hani.co.kr', label: 'benign', note: '언론사' },
+  { url: 'https://www.ytn.co.kr', label: 'benign', note: '방송사' },
+  { url: 'https://news.kbs.co.kr', label: 'benign', note: '방송사' },
 
   // ── 피싱(phish) 100건 ──────────────────────────────────────
   // 타이포스쿼팅
@@ -219,6 +224,7 @@ export const samples: Sample[] = [
   { url: 'http://customer-support-verify.win/chat', label: 'phish', note: '키워드 조합' },
   { url: 'https://id-confirm-safety.buzz', label: 'phish', note: '키워드 조합' },
   { url: 'https://quick-loan-apply.loan/form?ref=sms', label: 'phish', note: '대출 사기' },
+  { url: 'https://portaldocarromtguiasexpress.site/', label: 'phish', note: '긴 이어붙이기 도메인 (실제 피싱 DB 표본)' },
 ]
 
 let correct = 0

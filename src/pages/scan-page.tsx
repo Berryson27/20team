@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Camera, Images, LoaderCircle, LockKeyhole, ShieldCheck, Zap } from 'lucide-react'
+import { Camera, ChevronDown, ChevronRight, Clock3, Images, LoaderCircle, LockKeyhole, ShieldCheck, Zap } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { AppShell } from '@/components/app-shell'
@@ -8,8 +8,21 @@ import { QrArt } from '@/components/qr-art'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import QrScanner from 'qr-scanner'
+
 import { decodeQrImage } from '@/lib/qr-decoder'
-import { verifyPayload } from '@/lib/verification'
+import { readHistory, verifyPayload } from '@/lib/verification'
+
+type CameraState = 'starting' | 'active' | 'paused' | 'unavailable'
+
+const verdictDot = { safe: 'bg-primary', warn: 'bg-warning', danger: 'bg-danger' }
+const verdictLabel = { safe: '낮음', warn: '주의', danger: '위험' }
+
+function formatCheckedAt(iso: string) {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${date.getMonth() + 1}.${date.getDate()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
 
 const progressSteps = [
   { label: 'QR 주소 추출', detail: '사진 속 QR을 읽고 있어요.' },
@@ -31,6 +44,11 @@ export function ScanPage() {
   const navigate = useNavigate()
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const galleryInputRef = useRef<HTMLInputElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const scannerRef = useRef<QrScanner | null>(null)
+  const busyRef = useRef(false)
+  const runRef = useRef<((value: string, startIndex?: number) => Promise<void>) | null>(null)
+  const [cameraState, setCameraState] = useState<CameraState>('starting')
   const [payload, setPayload] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -38,6 +56,10 @@ export function ScanPage() {
   const [progressIndex, setProgressIndex] = useState(0)
   const [previewUrl, setPreviewUrl] = useState('')
   const [decodeMessage, setDecodeMessage] = useState(progressSteps[0].detail)
+  const [progressDetail, setProgressDetail] = useState('')
+  const [history] = useState(() => readHistory())
+  const [showAllHistory, setShowAllHistory] = useState(false)
+  const visibleHistory = showAllHistory ? history : history.slice(0, 1)
   const isBusy = isReadingQr || isLoading
   const canVerifyUrl = isHttpUrl(payload)
 
@@ -45,26 +67,78 @@ export function ScanPage() {
     if (previewUrl) URL.revokeObjectURL(previewUrl)
   }, [previewUrl])
 
+  // 페이지 진입 시 카메라를 바로 켜고 QR을 실시간 인식한다. 권한 거부·카메라 없음이면 촬영 방식으로 폴백.
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    const scanner = new QrScanner(
+      video,
+      (result) => {
+        if (busyRef.current || !result.data) return
+        scanner.stop()
+        setCameraState('paused')
+        setPayload(result.data)
+        void runRef.current?.(result.data, 1)
+      },
+      { returnDetailedScanResult: true, preferredCamera: 'environment', maxScansPerSecond: 6, highlightScanRegion: false },
+    )
+    scannerRef.current = scanner
+    scanner.start()
+      .then(() => setCameraState('active'))
+      .catch(() => setCameraState('unavailable'))
+    return () => {
+      scannerRef.current = null
+      scanner.destroy()
+    }
+  }, [])
+
+  function resumeCamera() {
+    const scanner = scannerRef.current
+    if (!scanner) return
+    setCameraState('starting')
+    scanner.start()
+      .then(() => setCameraState('active'))
+      .catch(() => setCameraState('unavailable'))
+  }
+
   async function runVerification(value: string, startIndex = 1) {
     const target = value.trim()
     if (!target || isLoading) return
+    busyRef.current = true
     setError('')
     setIsLoading(true)
     setProgressIndex(startIndex)
-    const timer = window.setInterval(() => setProgressIndex((current) => Math.min(current + 1, progressSteps.length - 1)), 1200)
+    setProgressDetail('')
     try {
-      const result = await verifyPayload(target)
+      // 진행 표시는 타이머 연출이 아니라 실제 검사 단계 이벤트를 따른다.
+      const result = await verifyPayload(target, (event) => {
+        if (event.step === 'domain') {
+          setProgressIndex(2)
+          setProgressDetail(event.detail ?? '')
+        } else if (event.step === 'ai') {
+          setProgressIndex(3)
+          setProgressDetail('')
+        } else if (event.step === 'judge') {
+          setProgressIndex(4)
+          setProgressDetail('')
+        }
+      })
       navigate('/result', { state: { result } })
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '검증을 완료하지 못했습니다.')
+      if (cameraState !== 'unavailable') resumeCamera()
     } finally {
-      window.clearInterval(timer)
+      busyRef.current = false
       setIsLoading(false)
     }
   }
+  useEffect(() => {
+    runRef.current = runVerification
+  })
 
   async function handleQrImage(file?: File) {
     if (!file) return
+    busyRef.current = true
     setError('')
     setPayload('')
     setIsReadingQr(true)
@@ -77,6 +151,7 @@ export function ScanPage() {
       setIsReadingQr(false)
       await runVerification(result.data, 1)
     } catch {
+      busyRef.current = false
       setIsReadingQr(false)
       setError('이미지에서 QR 코드를 찾지 못했습니다. 선명한 이미지로 다시 시도해주세요.')
     }
@@ -87,8 +162,7 @@ export function ScanPage() {
       <PageHeading
         eyebrow="QR CHECK"
         title="QR 진단"
-        description="QR을 촬영하면 Gemini가 연결 주소를 열기 전에 먼저 확인합니다."
-        backTo="/"
+        description="카메라에 QR을 비추면 연결 주소를 열기 전에 먼저 확인합니다."
         action={<Badge className="hidden sm:inline-flex"><Zap className="size-3.5" /> Gemini AI 분석</Badge>}
       />
 
@@ -112,18 +186,25 @@ export function ScanPage() {
 
           <div className="px-1 pt-1">
             <h2 className="text-base font-extrabold tracking-[-0.03em]">의심스러운 QR, 열기 전에 확인하세요</h2>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">사진은 촬영 확인 후 바로 분석하고, 주소는 아래에 직접 입력할 수 있어요.</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">카메라에 QR을 비추면 자동으로 인식해 분석하고, 주소는 아래에 직접 입력할 수 있어요.</p>
           </div>
 
           <button
             type="button"
             disabled={isBusy}
-            onClick={() => cameraInputRef.current?.click()}
+            onClick={() => { if (cameraState !== 'active') cameraInputRef.current?.click() }}
             className="relative block min-h-60 w-full flex-1 overflow-hidden rounded-[24px] bg-[linear-gradient(145deg,#26364e,#607188_52%,#27384d)] text-left transition-transform active:scale-[0.995] disabled:cursor-wait md:h-72 md:flex-none"
-            aria-label="카메라로 QR 촬영하기"
+            aria-label={cameraState === 'active' ? '카메라에 QR을 비춰주세요' : '카메라로 QR 촬영하기'}
           >
             <div className="absolute inset-0 opacity-35 [background-image:radial-gradient(circle_at_30%_20%,#b7dfff_0,transparent_28%),radial-gradient(circle_at_80%_70%,#cfc5ff_0,transparent_24%)]" />
             <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(4,18,34,0.08),rgba(4,18,34,0.36))]" />
+            <video
+              ref={videoRef}
+              muted
+              playsInline
+              className={`absolute inset-0 size-full object-cover transition-opacity duration-300 ${cameraState === 'active' ? 'opacity-100' : 'opacity-0'}`}
+            />
+            {(cameraState !== 'active' || isBusy) && (
             <div className={`absolute left-1/2 top-1/2 grid size-28 -translate-x-1/2 -translate-y-1/2 place-items-center overflow-hidden rounded-2xl border border-white/35 bg-white/90 shadow-2xl sm:size-36 ${isBusy ? 'analysis-pulse' : ''}`}>
               {previewUrl
                 ? <img src={previewUrl} alt="촬영한 QR" className="size-full object-cover" />
@@ -132,6 +213,7 @@ export function ScanPage() {
               {isBusy && <span className="analysis-scan-line absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-[#5ef4ee] to-transparent shadow-[0_0_18px_5px_rgba(94,244,238,0.72)]" />}
               {isBusy && <span className="absolute grid size-11 place-items-center rounded-full border border-white/45 bg-[#172b45]/65 text-white backdrop-blur-md"><LoaderCircle className="size-5 animate-spin" /></span>}
             </div>
+            )}
             <div className="absolute left-1/2 top-1/2 size-36 -translate-x-1/2 -translate-y-1/2 sm:size-44">
               <span className="absolute left-0 top-0 size-8 rounded-tl-xl border-l-2 border-t-2 border-[#5ef4ee]" />
               <span className="absolute right-0 top-0 size-8 rounded-tr-xl border-r-2 border-t-2 border-[#5ef4ee]" />
@@ -144,8 +226,16 @@ export function ScanPage() {
               <span className="grid size-8 place-items-center rounded-full bg-black/20 backdrop-blur"><ShieldCheck className="size-4" /></span>
             </div>
             <div className="absolute inset-x-4 bottom-3 text-center text-white sm:bottom-4">
-              <p key={progressIndex} className={`text-xs font-semibold sm:text-sm ${isBusy ? 'analysis-status-pop' : ''}`}>{isBusy ? progressSteps[progressIndex].label : '눌러서 QR 촬영'}</p>
-              {isBusy && <p className="mt-0.5 text-[11px] text-white/65">{progressIndex === 0 ? decodeMessage : progressSteps[progressIndex].detail}</p>}
+              <p key={progressIndex} className={`text-xs font-semibold sm:text-sm ${isBusy ? 'analysis-status-pop' : ''}`}>
+                {isBusy
+                  ? progressSteps[progressIndex].label
+                  : cameraState === 'active' ? '카메라에 QR을 비춰주세요'
+                    : cameraState === 'starting' ? '카메라 준비 중…'
+                      : cameraState === 'paused' ? 'QR 인식 완료'
+                        : '눌러서 QR 촬영'}
+              </p>
+              {isBusy && <p className="mt-0.5 text-[11px] text-white/65">{progressIndex === 0 ? decodeMessage : progressDetail || progressSteps[progressIndex].detail}</p>}
+              {!isBusy && cameraState === 'unavailable' && <p className="mt-0.5 text-[11px] text-white/65">카메라를 사용할 수 없어 촬영·앨범 방식으로 동작해요.</p>}
             </div>
           </button>
 
@@ -175,6 +265,39 @@ export function ScanPage() {
             </Button>
           </div>
           {error && <p role="alert" className="rounded-xl bg-danger/10 px-3 py-2 text-xs font-semibold leading-5 text-danger">{error}</p>}
+
+          {history.length > 0 && (
+            <div className="rounded-2xl bg-secondary/50 p-2.5">
+              <p className="flex items-center gap-1.5 px-1 pb-1.5 text-[11px] font-bold tracking-[0.06em] text-muted-foreground"><Clock3 className="size-3" /> 최근 검사</p>
+              <div className="space-y-1">
+                {visibleHistory.map((entry) => (
+                  <button
+                    key={entry.checkedAt}
+                    type="button"
+                    disabled={isBusy}
+                    onClick={() => navigate('/result', { state: { result: entry.result } })}
+                    className="flex w-full items-center gap-2.5 rounded-xl bg-white/75 px-3 py-2 text-left transition hover:bg-white disabled:opacity-50"
+                  >
+                    <span className={`size-2 shrink-0 rounded-full ${verdictDot[entry.verdict]}`} />
+                    <span className="min-w-0 flex-1 truncate text-xs font-semibold">{entry.host}</span>
+                    <span className="shrink-0 text-[11px] font-bold text-muted-foreground">{entry.score}점 · {verdictLabel[entry.verdict]}</span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground/70">{formatCheckedAt(entry.checkedAt)}</span>
+                    <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/50" />
+                  </button>
+                ))}
+              </div>
+              {history.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllHistory((current) => !current)}
+                  className="mt-1 flex w-full items-center justify-center gap-1 rounded-xl py-1.5 text-[11px] font-bold text-primary transition hover:bg-white/60"
+                >
+                  {showAllHistory ? '접기' : `이전 검사 ${history.length - 1}건 더 보기`}
+                  <ChevronDown className={`size-3.5 transition-transform ${showAllHistory ? 'rotate-180' : ''}`} />
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="mt-auto flex items-center gap-3 rounded-2xl bg-primary/7 px-3.5 py-3 text-muted-foreground">
             <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-white/80 text-primary shadow-sm"><LockKeyhole className="size-4" /></span>

@@ -1,16 +1,18 @@
+import { useEffect } from 'react'
 import { ArrowLeft, ExternalLink, Smartphone } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
+import { readLastVerification, seedDemoVerification } from '@/lib/verification'
+
 const screens = [
-  { title: '홈', description: '서비스 진입 화면', path: '/' },
-  { title: 'QR 진단', description: '촬영 및 입력 화면', path: '/scan' },
+  { title: 'QR 진단', description: '실시간 카메라 인식 화면', path: '/scan' },
   { title: '진단 결과', description: '위험 점수와 판단 근거', path: '/result' },
   { title: '큐싱 위험지도', description: '지역별 위험 현황', path: '/map' },
 ]
 
 function PhoneMockup({ title, description, path }: (typeof screens)[number]) {
   return (
-    <article className="w-[375px] shrink-0">
+    <article className="w-[min(375px,calc(100vw-2.5rem))] shrink-0">
       <div className="mb-4 flex items-end justify-between px-1">
         <div>
           <h2 className="font-extrabold tracking-[-0.035em] text-[#172b45]">{title}</h2>
@@ -26,15 +28,17 @@ function PhoneMockup({ title, description, path }: (typeof screens)[number]) {
       </div>
 
       <div className="relative rounded-[50px] bg-[#172232] p-[9px] shadow-[0_35px_90px_rgba(29,42,62,0.24),0_8px_24px_rgba(29,42,62,0.14)]">
-        <div className="pointer-events-none absolute left-1/2 top-[16px] z-20 h-[24px] w-[104px] -translate-x-1/2 rounded-full bg-[#172232]" />
+        {/* 실기기처럼 화면 전체를 콘텐츠로 채우고 노치를 그 위에 겹친다. 앱이 모바일 상단 여백으로 노치 자리를 비워둔다. */}
+        <div className="pointer-events-none absolute left-1/2 top-[17px] z-20 h-[22px] w-[104px] -translate-x-1/2 rounded-full bg-[#172232]" />
         <div className="pointer-events-none absolute left-[18px] top-24 z-20 h-20 w-[3px] rounded-full bg-[#293648]" />
         <div className="pointer-events-none absolute right-[18px] top-32 z-20 h-28 w-[3px] rounded-full bg-[#293648]" />
         <div className="overflow-hidden rounded-[42px] bg-white">
           <iframe
             src={path}
             title={`${title} 모바일 화면 미리보기`}
-            className="block h-[780px] w-full border-0 bg-white"
+            className="block h-[820px] w-full border-0 bg-white"
             loading="eager"
+            allow="camera"
           />
         </div>
       </div>
@@ -43,6 +47,11 @@ function PhoneMockup({ title, description, path }: (typeof screens)[number]) {
 }
 
 export function ShowcasePage() {
+  // 진단 결과 프레임이 /scan으로 리다이렉트되지 않도록, 결과가 없을 때만 데모 결과를 심는다.
+  useEffect(() => {
+    if (!readLastVerification()) seedDemoVerification()
+  }, [])
+
   return (
     <div className="min-h-dvh overflow-hidden bg-[radial-gradient(circle_at_20%_0%,#e3faff_0,transparent_28%),radial-gradient(circle_at_90%_5%,#eee8ff_0,transparent_25%),#f3f6f8]">
       <header className="border-b border-white/80 bg-white/65 backdrop-blur-xl">

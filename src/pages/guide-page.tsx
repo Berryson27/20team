@@ -29,7 +29,7 @@ export function GuidePage() {
         eyebrow="SAFETY GUIDE"
         title="큐싱 예방가이드"
         description="진단 전후에 사용자가 바로 실천할 수 있는 안전 수칙을 담는 공간입니다."
-        backTo="/"
+        backTo="/scan"
       />
 
       <div className="grid gap-4 md:grid-cols-3">

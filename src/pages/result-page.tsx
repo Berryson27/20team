@@ -1,13 +1,34 @@
-import { useState } from 'react'
-import { ArrowLeft, Check, ChevronDown, Copy, Globe2, Info, LockKeyhole, PhoneCall, RefreshCw, Route, TriangleAlert } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ArrowLeft, Check, ChevronDown, Copy, Globe2, Info, LockKeyhole, PhoneCall, RefreshCw, Route, Share2, TriangleAlert } from 'lucide-react'
 import { Link, Navigate, useLocation } from 'react-router-dom'
 
 import { AppShell } from '@/components/app-shell'
 import { PageHeading } from '@/components/page-heading'
+import { RiskGauge } from '@/components/risk-gauge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { readLastVerification, type VerificationResult } from '@/lib/verification'
+
+function useCountUp(target: number, duration = 900) {
+  const [value, setValue] = useState(() => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? target : 0))
+  useEffect(() => {
+    let frame = 0
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      frame = requestAnimationFrame(() => setValue(target))
+      return () => cancelAnimationFrame(frame)
+    }
+    const start = performance.now()
+    const tick = (now: number) => {
+      const progress = Math.min((now - start) / duration, 1)
+      setValue(Math.round(target * (1 - (1 - progress) ** 3)))
+      if (progress < 1) frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [target, duration])
+  return value
+}
 
 const verdictCopy = {
   safe: {
@@ -47,12 +68,21 @@ const hotlines = [
 
 export function ResultPage() {
   const location = useLocation()
-  const [copied, setCopied] = useState(false)
   const stateResult = (location.state as { result?: VerificationResult } | null)?.result
   const result = stateResult || readLastVerification()
+  const [copied, setCopied] = useState(false)
+  const [shared, setShared] = useState(false)
+  const [warningOpen, setWarningOpen] = useState(() => result?.verdict === 'danger')
+  const displayScore = useCountUp(result?.score ?? 0)
+
+  useEffect(() => {
+    if (warningOpen) navigator.vibrate?.([120, 60, 120])
+  }, [warningOpen])
+
   if (!result) return <Navigate to="/scan" replace />
 
   const copy = verdictCopy[result.verdict]
+  const officialSafe = Boolean(result.trusted) && result.verdict === 'safe'
   const sortedSignals = result.signals.slice().sort((a, b) => b.points - a.points)
   const domainSignals = sortedSignals.filter((signal) => signal.stage === 'domain')
   const redirectSignal = sortedSignals.find((signal) => signal.stage === 'redirect')
@@ -61,6 +91,25 @@ export function ResultPage() {
   const actionSignal = actionSignals[0]
   const executableRisk = result.threatType === 'apk_install' && !actionSignal
   const checkedUrl = result.chain?.at(-1) ?? result.finalHost
+  const aiSummary = result.model.startsWith('gemini') && !result.fallback
+    ? result.stages.find((stage) => stage.id === 'ai')?.detail
+    : null
+
+  async function shareResult() {
+    if (!result) return
+    const text = `[한큐 QR 진단] ${checkedUrl ?? '검사한 주소'} — 위험도 ${copy.badge} (${result.score}/100점)\n주요 신호: ${result.reasons.join(', ')}`
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: '한큐 QR 진단 결과', text })
+      } else {
+        await navigator.clipboard.writeText(text)
+        setShared(true)
+        window.setTimeout(() => setShared(false), 1500)
+      }
+    } catch {
+      // 사용자가 공유 시트를 닫은 경우 등은 무시한다.
+    }
+  }
 
   async function copyHost() {
     if (!checkedUrl) return
@@ -77,8 +126,8 @@ export function ResultPage() {
     {
       id: 'domain',
       title: '주소 신뢰도',
-      detail: domainSignals[0]?.title || '의심 신호 없음',
-      status: (domainSignals[0]?.level || 'safe') as 'safe' | 'warning' | 'danger',
+      detail: result.trusted ? '공식 등록 도메인과 일치' : domainSignals[0]?.title || '의심 신호 없음',
+      status: (result.trusted ? 'safe' : domainSignals[0]?.level || 'safe') as 'safe' | 'warning' | 'danger',
       icon: Globe2,
     },
     {
@@ -127,15 +176,13 @@ export function ResultPage() {
             <div className="absolute -bottom-24 -left-16 size-64 rounded-full bg-[#173d78]/12 blur-3xl" />
             <div className="relative">
               <p className="text-base font-bold tracking-[-0.02em] text-white/90 sm:text-lg">피싱 위험 점수</p>
-              <div className="mt-2 flex items-end justify-center gap-2">
-                <strong className="text-[5.75rem] font-black leading-none tracking-[-0.09em] sm:text-[7rem]">{result.score}</strong>
-                <span className="pb-2 text-2xl font-semibold text-white/85 sm:pb-3 sm:text-3xl">/ 100</span>
+              <div className="mt-3">
+                <RiskGauge score={displayScore} verdict={result.verdict} tone="onColor" />
               </div>
-              <span className={`mt-4 inline-flex min-w-24 items-center justify-center rounded-full bg-white px-6 py-2.5 text-xl font-extrabold shadow-sm sm:text-2xl ${copy.badgeClass}`}>
-                {copy.badge}
-              </span>
               <p className="mt-3 text-lg font-extrabold tracking-[-0.02em] sm:text-xl">{copy.headline}</p>
-              <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-white/85 sm:text-sm">{copy.advice}</p>
+              <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-white/85 sm:text-sm">
+                {officialSafe ? '공식 등록 도메인과 일치해요. 남은 점수는 연결 방식 같은 참고 신호의 합계예요.' : copy.advice}
+              </p>
             </div>
           </section>
 
@@ -183,6 +230,13 @@ export function ResultPage() {
                   )
                 })}
               </div>
+
+              {aiSummary && (
+                <div className="mt-3 rounded-xl bg-primary/6 px-3 py-2.5">
+                  <p className="text-[10px] font-bold tracking-[0.08em] text-primary">AI 분석 요약</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{aiSummary}</p>
+                </div>
+              )}
 
               {result.fallback && (
                 <div className="mt-3 flex gap-2 rounded-xl bg-warning/10 px-3 py-2.5 text-xs leading-5 text-muted-foreground">
@@ -262,11 +316,36 @@ export function ResultPage() {
             </div>
           </details>
 
-          <div className="mx-3 mt-2.5 sm:mx-7">
-            <Button asChild size="lg" className="h-12 w-full sm:h-14"><Link to="/scan"><RefreshCw /> 다른 QR 검사하기</Link></Button>
+          <div className="mx-3 mt-2.5 grid grid-cols-[1fr_auto] gap-2 sm:mx-7">
+            <Button asChild size="lg" className="h-12 sm:h-14"><Link to="/scan"><RefreshCw /> 다른 QR 검사하기</Link></Button>
+            <Button variant="outline" size="lg" className="h-12 px-4 sm:h-14 sm:px-6" onClick={() => void shareResult()} aria-label="진단 결과 공유">
+              {shared ? <Check className="text-primary" /> : <Share2 />} {shared ? '복사됨' : '공유'}
+            </Button>
           </div>
         </div>
       </div>
+
+      {warningOpen && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-label="피싱 위험 경고"
+          className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-[#e0404c] via-[#e94f58] to-[#a8262f] px-8 text-center text-white"
+        >
+          <TriangleAlert className="size-24 animate-pulse" strokeWidth={1.6} />
+          <h2 className="text-3xl font-black tracking-[-0.03em] sm:text-4xl">접속하지 마세요</h2>
+          <p className="max-w-sm text-sm leading-6 text-white/85">
+            피싱 위험이 높은 QR입니다.<br />링크를 열거나 앱을 설치하지 마세요.
+          </p>
+          <button
+            type="button"
+            onClick={() => setWarningOpen(false)}
+            className="mt-4 h-12 rounded-full bg-white px-8 text-base font-extrabold text-danger shadow-lg transition active:scale-95"
+          >
+            판정 근거 확인하기
+          </button>
+        </div>
+      )}
     </AppShell>
   )
 }

@@ -27,7 +27,7 @@ export function RiskMapPage() {
         eyebrow="QUISHING MAP"
         title="큐싱 위험지도"
         description="지역별 신고와 위험 유형을 탐색하는 화면입니다. 현재 수치는 레이아웃 확인을 위한 예시 데이터입니다."
-        backTo="/"
+        backTo="/scan"
         action={<Badge variant="outline" className="hidden bg-white sm:inline-flex"><Info className="size-3.5" /> 예시 데이터</Badge>}
       />
 

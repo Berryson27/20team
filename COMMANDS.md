@@ -13,4 +13,5 @@
 
 ## 참고
 - `.env`의 키 이름은 반드시 `VITE_GEMINI_API_KEY` (Vite는 `VITE_` 접두사만 클라이언트에 노출).
+- Safe Browsing 조회는 `VITE_SAFE_BROWSING_API_KEY`가 있으면 그 키를, 없으면 Gemini 키를 재사용한다. 해당 Google 프로젝트에서 Safe Browsing API를 활성화해야 동작하며, 미활성화 시 자동으로 건너뛴다.
 - 벤치마크는 `src/lib/url-analysis.ts` 로컬 판별 엔진을 라벨링된 URL 199건으로 채점한다.

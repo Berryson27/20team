@@ -1,11 +1,10 @@
 import type { ReactNode } from 'react'
-import { BookOpen, Home, MapPinned, QrCode, ShieldCheck } from 'lucide-react'
+import { BookOpen, MapPinned, QrCode, ShieldCheck } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { cn } from '@/lib/utils'
 
 const navigation = [
-  { label: '홈', href: '/', icon: Home },
   { label: 'QR 진단', href: '/scan', icon: QrCode },
   { label: '위험지도', href: '/map', icon: MapPinned },
   { label: '예방가이드', href: '/guide', icon: BookOpen },
@@ -13,7 +12,7 @@ const navigation = [
 
 function Brand() {
   return (
-    <Link to="/" className="flex items-center gap-2.5" aria-label="한큐 홈">
+    <Link to="/scan" className="flex items-center gap-2.5" aria-label="한큐 홈">
       <span className="grid size-10 place-items-center rounded-2xl bg-gradient-to-br from-[#dffcff] to-[#ebe8ff] text-primary shadow-[inset_0_0_0_1px_rgba(15,166,181,0.16)]">
         <ShieldCheck className="size-5" strokeWidth={2.2} />
       </span>
@@ -54,7 +53,7 @@ function MobileNavigation() {
   const { pathname } = useLocation()
 
   return (
-    <nav className="fixed inset-x-3 bottom-3 z-50 mx-auto grid max-w-md grid-cols-4 rounded-[24px] border border-white/80 bg-white/90 p-1.5 shadow-[0_18px_50px_rgba(31,47,76,0.16)] backdrop-blur-xl md:hidden" aria-label="주요 메뉴">
+    <nav className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-50 mx-auto grid max-w-md grid-cols-3 rounded-[24px] border border-white/80 bg-white/90 p-1.5 shadow-[0_18px_50px_rgba(31,47,76,0.16)] backdrop-blur-xl md:hidden" aria-label="주요 메뉴">
       {navigation.map((item) => {
         const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
         return (
@@ -92,7 +91,7 @@ export function AppShell({ children, tone = 'aurora', hideMobileHeader = false }
         </div>
       )}
 
-      <header className={cn('relative z-40 border-b border-white/60 bg-white/55 backdrop-blur-xl', hideMobileHeader && 'hidden md:block')}>
+      <header className={cn('relative z-40 border-b border-white/60 bg-white/55 pt-[max(2.5rem,env(safe-area-inset-top))] backdrop-blur-xl md:pt-[env(safe-area-inset-top)]', hideMobileHeader && 'hidden md:block')}>
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-5 sm:px-8 md:h-[72px]">
           <Brand />
           <DesktopNavigation />
@@ -103,7 +102,11 @@ export function AppShell({ children, tone = 'aurora', hideMobileHeader = false }
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto max-w-7xl px-5 pb-28 pt-5 sm:px-8 sm:pt-8 md:pb-14 md:pt-12">{children}</main>
+      {/* 기종별 노치·펀치홀 카메라가 글자를 가리지 않도록, 모바일에서는 상단 여백을 노치 높이(2.75rem) 또는 safe-area 이상으로 확보한다. 배경은 화면 전체를 채운다. */}
+      <main className={cn(
+        'relative z-10 mx-auto max-w-7xl px-5 pb-28 sm:px-8 md:pb-14 md:pt-12',
+        hideMobileHeader ? 'pt-[max(2.75rem,env(safe-area-inset-top))] sm:pt-8' : 'pt-5 sm:pt-8',
+      )}>{children}</main>
       <MobileNavigation />
     </div>
   )
