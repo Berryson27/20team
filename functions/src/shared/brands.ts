@@ -1,27 +1,60 @@
 /**
- * 국내 결제·금융 브랜드 사전 (검증엔진 §4 S3 타이포스쿼팅 탐지용).
- * key = 브랜드 별칭(도메인 라벨에서 찾는 문자열), officialDomains = 공식 도메인.
- * 데모 시나리오(toss-pay.xyz vs toss.im)에 맞춰 toss 포함.
+ * 국내·글로벌 브랜드/기관 사전 (검증엔진 §4 S3 사칭·타이포스쿼팅 탐지용).
+ * name = 표시용 브랜드명, aliases = 도메인 라벨(세그먼트)에서 찾는 토큰,
+ * officialDomains = 공식 도메인(사칭 판정에서 제외되는 화이트리스트).
+ *
+ * ⚠ 이 사전은 20team 로컬 엔진(src/lib/url-analysis.ts)의 BRANDS(~25개)를 그대로 이식한 것이다.
+ * 축소하면 samsung/icloud/google/paypal/instagram/upbit/bithumb/police/cjlogistics 등의
+ * 브랜드 사칭 피싱이 무신호(0점)로 빠져나가 recall 이 급락한다(Task 6 회귀). 임의 축소 금지.
  */
 export interface BrandEntry {
   name: string;
-  aliases: string[]; // 도메인 라벨과 편집거리 비교에 쓰는 짧은 토큰
-  officialDomains: string[];
+  aliases: string[]; // 도메인 세그먼트와 비교하는 토큰(20team tokens)
+  officialDomains: string[]; // 공식 도메인 — 이 위에 있으면 사칭 아님(오탐 방지)
 }
 
 export const BRANDS: BrandEntry[] = [
-  { name: "토스", aliases: ["toss", "tosspay"], officialDomains: ["toss.im", "tossbank.com", "tosspayments.com"] },
-  { name: "카카오페이", aliases: ["kakaopay", "kakao"], officialDomains: ["kakaopay.com", "kakao.com"] },
-  { name: "네이버페이", aliases: ["naverpay", "npay", "naver"], officialDomains: ["naver.com", "pay.naver.com"] },
-  { name: "국민은행", aliases: ["kbstar", "kookmin", "kbpay"], officialDomains: ["kbstar.com", "kbpay.co.kr"] },
+  { name: "네이버", aliases: ["naver", "naverpay", "navercorp"], officialDomains: ["naver.com", "naver.me", "navercorp.com", "pay.naver.com"] },
+  { name: "카카오", aliases: ["kakao", "kakaopay", "kakaobank", "kakaotalk"], officialDomains: ["kakao.com", "kakaocorp.com", "kakaobank.com", "kakaopay.com", "kakaofriends.com", "kakaomobility.com"] },
+  { name: "다음", aliases: ["daum"], officialDomains: ["daum.net"] },
+  { name: "토스", aliases: ["toss", "tossbank", "tosspay"], officialDomains: ["toss.im", "tossbank.com", "tosspayments.com"] },
+  { name: "쿠팡", aliases: ["coupang"], officialDomains: ["coupang.com", "coupangplay.com"] },
+  { name: "구글", aliases: ["google"], officialDomains: ["google.com", "google.co.kr", "youtube.com", "gmail.com"] },
+  { name: "애플/아이클라우드", aliases: ["apple", "icloud"], officialDomains: ["apple.com", "icloud.com"] },
+  { name: "삼성", aliases: ["samsung", "samsungcard", "samsungpay"], officialDomains: ["samsung.com", "samsungcard.com", "samsungfire.com", "samsungpop.com"] },
+  { name: "국민은행", aliases: ["kbstar", "kbcard", "kbank"], officialDomains: ["kbstar.com", "kbcard.com", "kbanknow.com", "kbpay.co.kr"] },
   { name: "신한은행", aliases: ["shinhan"], officialDomains: ["shinhan.com", "shinhancard.com"] },
-  { name: "우리은행", aliases: ["wooribank", "woori"], officialDomains: ["wooribank.com"] },
-  { name: "하나은행", aliases: ["hanabank", "kebhana", "hana"], officialDomains: ["hanabank.com", "kebhana.com"] },
-  { name: "농협", aliases: ["nonghyup", "nhbank"], officialDomains: ["nonghyup.com", "banking.nonghyup.com"] },
+  { name: "우리은행", aliases: ["woori", "wooribank"], officialDomains: ["wooribank.com", "wooricard.com"] },
+  { name: "하나은행", aliases: ["hanabank", "hanacard", "kebhana"], officialDomains: ["kebhana.com", "hanacard.co.kr", "hanafn.com", "hanabank.com"] },
+  { name: "농협", aliases: ["nonghyup", "nhbank"], officialDomains: ["nonghyup.com", "nhbank.com", "banking.nonghyup.com"] },
+  { name: "기업은행", aliases: ["ibk"], officialDomains: ["ibk.co.kr"] },
+  { name: "홈택스", aliases: ["hometax"], officialDomains: ["hometax.go.kr"] },
+  { name: "경찰청", aliases: ["police"], officialDomains: ["police.go.kr"] },
+  { name: "정부24/민원", aliases: ["gov24", "minwon"], officialDomains: ["gov.kr", "minwon.go.kr"] },
+  { name: "우체국", aliases: ["epost", "koreapost"], officialDomains: ["epost.kr", "epost.go.kr"] },
+  { name: "CJ대한통운", aliases: ["cjlogistics"], officialDomains: ["cjlogistics.com"] },
+  { name: "한진택배", aliases: ["hanjin"], officialDomains: ["hanjin.co.kr"] },
+  { name: "업비트", aliases: ["upbit"], officialDomains: ["upbit.com"] },
+  { name: "빗썸", aliases: ["bithumb"], officialDomains: ["bithumb.com"] },
+  { name: "페이팔", aliases: ["paypal"], officialDomains: ["paypal.com"] },
+  { name: "넷플릭스", aliases: ["netflix"], officialDomains: ["netflix.com"] },
+  { name: "인스타그램", aliases: ["instagram"], officialDomains: ["instagram.com"] },
+  { name: "텔레그램", aliases: ["telegram"], officialDomains: ["telegram.org"] },
   { name: "제로페이", aliases: ["zeropay"], officialDomains: ["zeropay.or.kr"] },
-  { name: "쿠팡", aliases: ["coupang", "coupangpay"], officialDomains: ["coupang.com"] },
   { name: "배달의민족", aliases: ["baemin"], officialDomains: ["baemin.com"] },
 ];
+
+/**
+ * 브랜드 토큰 앞뒤에 흔히 붙는 접두·접미사 (부분일치 오탐 방지용).
+ * matchBrandToken 이 "token+affix"(예: samsungcard, naver-security, kakao-gift) 형태만
+ * 사칭으로 인정하고, 무관한 단어에 브랜드 토큰이 우연히 포함된 경우는 걸러낸다.
+ */
+export const BRAND_AFFIXES = new Set([
+  "pay", "bank", "card", "event", "login", "secure", "help", "center", "support",
+  "kr", "korea", "official", "mall", "shop", "gift", "point", "plus", "app", "web",
+  "my", "e", "m", "id", "auth", "wallet", "check", "verify", "care", "service",
+  "update", "delivery", "safe", "safety", "cert", "info", "notice", "cs",
+]);
 
 /**
  * 글로벌 신뢰 도메인 — 최종 목적지가 이들(또는 서브도메인)이면 "공식"으로 간주.

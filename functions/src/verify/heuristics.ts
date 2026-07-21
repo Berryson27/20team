@@ -10,7 +10,7 @@
  * RDAP 연령)는 유지하고, 20team 동일 규칙은 데이터 테이블만 병합(중복 신호 금지).
  * shortener 는 S2(redirect)가 담당하므로 여기서는 신호를 만들지 않는다.
  */
-import { BRANDS, OFFICIAL_DOMAINS, RISKY_TLDS } from "../shared/brands.ts";
+import { BRANDS, BRAND_AFFIXES, OFFICIAL_DOMAINS, RISKY_TLDS } from "../shared/brands.ts";
 
 const RDAP_TIMEOUT_MS = 2500;
 
@@ -59,6 +59,12 @@ const TRUSTED_DOMAINS_20 = [
 
 // 신뢰 집합: HanQ OFFICIAL_DOMAINS(BRANDS.officialDomains + GLOBAL_TRUSTED) ∪ 20team TRUSTED_DOMAINS
 const TRUSTED_SET = new Set<string>([...OFFICIAL_DOMAINS, ...TRUSTED_DOMAINS_20]);
+
+// 타이포스쿼팅 비교 대상 SLD(공식 도메인 + 신뢰 도메인의 최상위 라벨) — 20team R5 이식.
+const OFFICIAL_SLDS = [...new Set<string>(
+  [...BRANDS.flatMap((b) => b.officialDomains), ...TRUSTED_DOMAINS_20].map((d) => d.split(".")[0]),
+)];
+const OFFICIAL_SLDS_SET = new Set<string>(OFFICIAL_SLDS);
 
 // 위험 TLD: HanQ RISKY_TLDS 에 20team HIGH/MED_RISK_TLDS 를 접어 넣어 커버리지 확장(신호는 하나만).
 const RISKY_TLDS_EXT = new Set<string>([
@@ -195,41 +201,61 @@ async function domainAgeDays(host: string): Promise<number | null> {
   }
 }
 
-/** 타이포스쿼팅/사칭(HanQ 레벤슈타인): 공식 아닌 도메인이 브랜드를 흉내내는가 */
-function detectBrandImitation(sld: string): {
+/**
+ * 브랜드 토큰이 호스트 세그먼트에 정확히(또는 token+공용접사 형태로) 들어있는지 — 20team matchBrandToken 이식.
+ * 무관한 단어에 브랜드 토큰이 우연히 부분포함된 경우는 걸러(BRAND_AFFIXES 로만 접사 허용) 오탐을 막는다.
+ */
+function matchBrandToken(segments: string[], tokens: string[]): string | null {
+  for (const segment of segments) {
+    for (const token of tokens) {
+      if (segment === token) return token;
+      if (token.length >= 5) {
+        if (segment.startsWith(token) && BRAND_AFFIXES.has(segment.slice(token.length))) return token;
+        if (segment.endsWith(token) && BRAND_AFFIXES.has(segment.slice(0, segment.length - token.length))) return token;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * 브랜드 사칭/타이포스쿼팅 탐지 — 20team R3/R5 이식(flat 45).
+ * ① 브랜드 토큰이 호스트에 있는데 공식 도메인이 아니면 사칭(brand-impersonation, 45).
+ * ② 호스트 라벨이 공식 SLD 와 편집거리 1~2 이면 타이포스쿼팅(typosquat, 45).
+ * 두 경로 모두 단일 신호로 40점 경고선을 넘겨(20team 100% recall 재현), 공식 도메인은 exclusion 으로 제외.
+ */
+function detectBrandImitation(host: string, registrable: string): {
   score: number;
   brand: string | null;
   flag: string | null;
 } {
-  if (!sld) return { score: 0, brand: null, flag: null };
-  const label = sld.toLowerCase();
-  const tokens = label.split(/[^a-z0-9]+/).filter(Boolean);
+  const segments = host.split(/[.-]/).filter(Boolean);
 
-  let best: { score: number; brand: string; flag: string } | null = null;
+  // ① 브랜드 토큰 포함 + 비공식 도메인
   for (const brand of BRANDS) {
-    for (const alias of brand.aliases) {
-      const short = alias.length <= 4;
-      if (tokens.includes(alias) || label.includes(alias)) {
-        const cand = { score: 30, brand: brand.name, flag: "brand_lookalike" };
-        if (!best || cand.score > best.score) best = cand;
-        continue;
-      }
-      const dist = Math.min(
-        levenshtein(label, alias),
-        ...tokens.map((t) => levenshtein(t, alias))
-      );
-      if (dist === 1) {
-        const cand = { score: 30, brand: brand.name, flag: "typosquat_d1" };
-        if (!best || cand.score > best.score) best = cand;
-      } else if (dist === 2 && !short) {
-        const cand = { score: 20, brand: brand.name, flag: "typosquat_d2" };
-        if (!best || cand.score > best.score) best = cand;
+    const token = matchBrandToken(segments, brand.aliases);
+    if (token && !brand.officialDomains.includes(registrable)) {
+      return { score: 45, brand: brand.name, flag: "brand-impersonation" };
+    }
+  }
+
+  // ② 타이포스쿼팅 — 호스트 라벨을 공식 SLD 와 편집거리 1~2 로 비교
+  const labels = [...new Set([
+    registrable.split(".")[0] ?? host,
+    ...host.split(".").filter((label) => label.length >= 5),
+  ])];
+  for (const label of labels) {
+    if (OFFICIAL_SLDS_SET.has(label)) continue;
+    for (const official of OFFICIAL_SLDS) {
+      if (official.length < 5 || label === official) continue;
+      const allowance = official.length >= 7 ? 2 : 1;
+      if (levenshtein(label, official) <= allowance) {
+        return { score: 45, brand: official, flag: "typosquat" };
       }
     }
   }
-  return best
-    ? { score: best.score, brand: best.brand, flag: best.flag }
-    : { score: 0, brand: null, flag: null };
+
+  return { score: 0, brand: null, flag: null };
 }
 
 // ── 분석 본체 ───────────────────────────────────────────────────
@@ -312,11 +338,10 @@ export async function runHeuristics(finalUrl: string): Promise<HeuristicResult> 
     add("brand-subdomain", 50, "공식 주소를 앞에 붙인 위장", `${disguised}처럼 보이지만 실제 도메인은 ${registrable}입니다.`, "danger");
   }
 
-  // R3/R5 (HanQ 레벤슈타인 통합): 브랜드 토큰/타이포스쿼팅. brand-subdomain 이 이미 잡았으면 생략.
-  const sld = registrable.split(".")[0] ?? host;
+  // R3/R5 (20team 이식): 브랜드 토큰/타이포스쿼팅. brand-subdomain 이 이미 잡았으면 생략(중복 신호 방지).
   const brand = disguised
     ? { score: 0, brand: null as string | null, flag: null as string | null }
-    : detectBrandImitation(sld);
+    : detectBrandImitation(host, registrable);
   if (brand.score > 0) {
     add(brand.flag ?? "brand-impersonation", brand.score, `${brand.brand} 사칭 의심 주소`, `${brand.brand} 관련 이름을 쓰지만 공식 도메인이 아닙니다.`, "danger");
   }
