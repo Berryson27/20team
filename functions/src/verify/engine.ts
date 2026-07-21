@@ -101,7 +101,7 @@ export async function verifyPayload(req: VerifyRequest): Promise<VerifyResponse>
 
   // ── S3: 도메인 휴리스틱
   let heurStart = Date.now();
-  const heur = await runHeuristics(redir.finalHost);
+  const heur = await runHeuristics(redir.finalUrl);
   stages.push({
     key: "heuristics", status: "done", detail: heur.detail,
     flags: heur.flags, durationMs: Date.now() - heurStart,
