@@ -59,11 +59,11 @@ export function KoreaRiskMap({ cells, userLocation }: { cells: MapCell[]; userLo
       for (const c of cells) {
         const color = cellColor(c.count)
         L.circle([c.lat, c.lng], {
-          radius: 300 + c.count * 55,
+          radius: Math.min(140 + c.count * 22, 850),
           color,
           weight: 1.5,
           fillColor: color,
-          fillOpacity: 0.2,
+          fillOpacity: 0.28,
         })
           .bindTooltip(`${c.count}건 · ${c.topPlaceType ?? ''}`, { direction: 'top' })
           .addTo(layer)
