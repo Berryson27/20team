@@ -241,6 +241,7 @@ Firestore 컬렉션: `issuers/{id}`(+ `alerts`), `qr_codes/{qrId}`, `scan_logs`(
 
 - **프레임워크 불일치**: HanQ(Next.js) → 20team(Vite/React19) 재구현 공수. Leaflet·Firebase Auth·qrcode 등 신규 의존성.
 - **검증 점수 캡 정책**: S3 이식 규칙과 HanQ cap 40의 상호작용은 벤치마크(100+ 샘플)로 튜닝 필요. 통합 후 정확도 회귀 없는지 확인.
+- **정확도 회귀 게이트(2026-07-22 갱신)**: 벤치마크는 오탐(benign FP)뿐 아니라 **피싱 recall도 게이트**한다 — NEW recall ≥ OLD, NEW benignFP ≤ OLD. (실제로 Task 6 벤치가 브랜드 사전 축소로 인한 recall 100%→52.5% 회귀를 잡아냄. 교훈: S3 병합 시 **브랜드 사전 전체(~25개)와 flat-45 스코어링**을 반드시 함께 이식할 것.) 잔여 IP-host/punycode 미탐은 HanQ의 낮은 S3 가중치 때문이며 full pipeline(S2/S4/S5)이 보완.
 - **Firebase 준비**: 타깃을 `hanq-dev-17267`로 변경해 Blaze/Firestore/Auth/Secret은 이미 준비됨. 남은 것은 CLI 권한·웹 config·에뮬레이터 개발. 실배포는 라이브 함수 in-place 업데이트라 사용자 승인 후.
 - **라이브 백엔드 공유**: HanQ 프론트와 백엔드를 공유 → verify 계약 하위 호환 유지 필요(안 그러면 HanQ 사이트 회귀).
 - **두 저장소 계약 정렬**: 20team `VerificationResult` ↔ HanQ `VerifyResponse` 필드 매핑 시 result-page 렌더 로직 조정 필요.
