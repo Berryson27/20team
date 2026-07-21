@@ -3,7 +3,7 @@
 - 날짜: 2026-07-22
 - 대상 저장소: `20team` (GitHub: Berryson27/20team) — 이하 "20team"
 - 원본 참조 프로젝트: `/Volumes/ThinkingData SSD 1TB/jegal/AI codegate/HanQ` — 이하 "HanQ"
-- 배포 타깃: Firebase 프로젝트 `hanq-b0a27` (20team 기존 프로젝트, Blaze 필요)
+- 배포 타깃: Firebase 프로젝트 `hanq-dev-17267` (HanQ가 이미 배포된 프로젝트 — Blaze/Firestore/Auth/Functions 세팅 완료. 2026-07-22 사용자 지정으로 `hanq-b0a27`에서 변경)
 
 ## 1. 배경 / 목표
 
@@ -119,7 +119,10 @@ HanQ 프론트는 Next.js + 인라인 스타일이므로 **코드를 그대로 �
 
 ### 4.1 실 위험 지도
 
-- **프론트**: `korea-risk-map.tsx`를 Leaflet + OpenStreetMap 타일 기반으로 교체(중심 `[37.5405,126.986]` zoom 11). `vm.cells`를 원형 마커(반경 `300+count*55`m, 색: ≥25 red / ≥12 amber / else indigo)로 렌더. cells 없으면 6개 서울 구 정적 폴백. 하단: 전체/이번주 통계 타일, 6구 랭킹, 장소 유형 필터 칩, 익명 최근 신고 피드(상대 시각). 프라이버시 배지("구 단위 히트맵 · 정확 좌표 미저장").
+- **프론트 렌더(결정 필요, §4.5·§9)**: 두 안 중 택1 —
+  - (A) HanQ 방식: `korea-risk-map.tsx`를 Leaflet + OSM 타일로 교체(중심 `[37.5405,126.986]` zoom 11), `cells`를 원형 마커(반경 `300+count*55`m)로 렌더. 실좌표 그리드에 충실.
+  - (B) 20team 유지: SVG 전국 코로플레스(`@svg-maps/south-korea`)를 유지하고 region 집계로 색칠 + HanQ의 피드/칩/프라이버시/랭킹만 레이어. 웹 SPA 미관·정직성 우수(UX 에이전트 권장).
+- **공통(어느 안이든)**: 전체/이번주 통계 타일, 구 랭킹 그리드, 장소 유형 필터 칩(실카운트), 익명 최근 신고 피드(`timeAgo` 상대 시각), 프라이버시 배지("구 단위 히트맵 · 정확 좌표 미저장"), 신고 반영 배너.
 - **백엔드**: `map/summary.ts`(`GET /api/map/summary`) → `counters/global`, `map_agg`(top30), `map_cells`(top300), `reports`(latest8) 읽어 `MapSummaryResponse` 반환, `Cache-Control: no-store`.
 - **프라이버시 백본**: `geo/geohash.ts` — 원좌표 미저장. 인제스트 시 (a) 서울 구 행정코드+이름(25개 구 중심 최근접) (b) geohash-7(~153m 그리드) 디코드 중심만 핀 좌표로. BASE32 encode/decode + `SEOUL_DISTRICTS`.
 - **인제스트**: `reports/index.ts`(`POST /api/reports`) — `reports/*` 기록, `map_agg/<regionCode>`(count/weekCount) 증가, `map_cells/<geohash>`(count + byPlaceType) 증가, `counters/global.totalReports` 증가.
@@ -139,18 +142,66 @@ HanQ 프론트는 Next.js + 인라인 스타일이므로 **코드를 그대로 �
 
 ### 4.4 선택 항목 (마감 폴리시)
 
-- ThinkingEngine 트래킹(`track/index.ts` + 클라 `track.ts`, `sendBeacon`), 레이트리밋(`shared/ratelimit.ts`, verify 30/min·reports 15/min), 개인 방어 리포트(localStorage 집계), 데모 시더(`admin_tools/seed.ts`, 토큰 게이트), 벤치마크 갱신.
+- ThinkingEngine 트래킹(`track/index.ts` + 클라 `track.ts`, `sendBeacon`), 레이트리밋(`shared/ratelimit.ts`, verify 30/min·reports 15/min), 데모 시더(`admin_tools/seed.ts`, 토큰 게이트), 벤치마크 갱신.
 
-## 5. Firebase 프로젝트 설정 (`hanq-b0a27`)
+### 4.5 UI/UX 채택 리스트 (2026-07-22 UX 대조 반영)
 
-사용자 콘솔 접근이 필요한 항목(제가 안내만):
+색상은 20team 브랜드(teal `#0fa6b5`) 유지, HanQ에서는 **인터랙션 패턴만** 이식. 각 항목 우선순위 표기.
 
-1. Blaze(종량제) 플랜 활성화 — Functions 필수.
-2. Firestore 생성(가능하면 `asia-northeast3` 서울).
-3. Authentication: 이메일/비밀번호 + Google 공급자 활성화.
-4. `firebase login` CLI 권한.
-5. 시크릿(Secret Manager, `defineSecret`): `GEMINI_API_KEY`, `HANQ_SIGNING_SECRET`. 20team `.env.local`의 기존 Gemini 키 재사용 가능.
-6. 웹 클라 Firebase 설정(`NEXT_PUBLIC_*` 대신 20team은 `VITE_FIREBASE_*`)로 Auth/Firestore init.
+**PORT (HanQ가 더 나음 → 이식):**
+
+| 우선 | 항목 | HanQ 출처 | 20team 매핑 |
+|---|---|---|---|
+| ★1 | **카메라 줌 필(0.5/1/2/3×)** + capability 감지(미지원 시 숨김) | `Scanner.tsx` zoomFeature | `qr-scanner`의 `MediaStreamTrack.getCapabilities().zoom` / `applyConstraints({advanced:[{zoom}]})`, 카메라 위 Tailwind pill row (`scan-page.tsx`) |
+| ★1 | **플래시/토치 토글** + capability 감지 | `Scanner.tsx` torchFeature | 동일 트랙 `capabilities().torch` / `applyConstraints({advanced:[{torch}]})`, 기존 컨트롤 행에 `Zap` 버튼(지원 시만) |
+| ★2 | **위협 유형별 danger 액션 가이드 + 위협 배지** | `Results.tsx` threatType→actions | `result.threatType`는 이미 존재 → 정적 `dangerActions`를 `Record<threatType,string[]>` 룩업으로 교체 + 배지 |
+| ★3 | **`.tnums` tabular-nums** (카운터/점수 자릿수 흔들림 제거) | `globals.css .tnums` | `index.css`에 유틸 1줄 + RiskGauge/카운트업/지도 카운트에 적용 |
+| ★4 | **지도 최근 신고 피드 + `timeAgo` + 필터 칩 실카운트 + 프라이버시 배지** | `MapScreen.tsx` | `timeAgo` 순수함수 그대로 이식, 피드 카드·활성 필터·잠금 배지("구 단위 히트맵·정확 좌표 미저장") |
+| ★5 | **방어 리포트 페이지 + 4번째 하단탭** (지킨 금액·등급·통계·스캔 이력) | `DefenseReport.tsx` | 신규 `defense-page.tsx`, 기존 `readHistory()` 집계 재사용(신규 저장소 불필요) |
+| ★6 | **숨은 데모 트리거(로고 트리플탭 / `?demo=1`)** — safe/warn/danger 시연 | `page.tsx` tapLogo | `app-shell.tsx` Brand에 탭 카운터 → 캔드 `VerificationResult`를 `/result`로 |
+| 옵션 | 스텝형 파이프라인 검증 화면(체크리스트 카드) | `Analysis.tsx` | 기존 `progressSteps`를 체크리스트로, **이벤트 기반 데이터 소스 유지** |
+| 옵션 | danger 플래시 인 + 차단 호스트 취소선("차단됨" 칩) | `Results.tsx` flash | `index.css` flash 키프레임 + `line-through` + Badge |
+| 옵션 | warn "위험을 알고 이동" 오버라이드 모달 | `Results.tsx` OverrideModal | warn 경로에 확인 모달 |
+| 옵션 | 카메라 라이브 카운터 오버레이("오늘 차단 N·누적 N") | `Scanner.tsx` | 지도 통계 연동 후 반투명 pill |
+| 옵션 | 글로벌 토스트(카메라 거부 등 폴백 안내) | `page.tsx` toast | 경량 토스트 컨텍스트 |
+| 옵션 | 리워드 티저 / 라이브 카운터 | `Rewards.tsx` | 방어 리포트에 로드맵 카드 |
+
+**KEEP-20team (20team이 이미 더 나음 → 이식 시 절대 회귀 금지 가드레일):**
+
+- 카운트업 점수 애니메이션 + `prefers-reduced-motion` 존중 (`result-page.tsx useCountUp`)
+- danger 전체화면 `navigator.vibrate` + `role="alertdialog"` a11y
+- SVG RiskGauge(그라디언트 원형 게이지) — HanQ 평면 바보다 우수
+- `navigator.share` + 클립보드 폴백 + 호스트 복사
+- **Otsu QR 이미지 디코더**(`qr-decoder.ts`) — 흐린 업로드도 디코드, HanQ는 전처리 없음
+- 이벤트 기반 검증 진행(가짜 타이머 아님)
+- lucide-react 아이콘(트리셰이킹) — 이식 화면의 `Icon name=…`는 lucide로 치환
+- 반응형 앱 셸 + 안전영역 하단 네비 — HanQ 360px 폰목업 프레임은 **이식 안 함**
+- 전역 `prefers-reduced-motion` CSS 블록 — 이식 애니메이션(flash/스텝)도 이 규칙 준수
+- 스캔 페이지 최근 검사 이력(판정 점 + 상대시간)
+- 이미지 업로드/카메라샷/URL 입력 3중 폴백, 스캔영역 코너 브래킷
+
+**지도 렌더 방식 — 결정 필요(§9 참조):** HanQ Leaflet+OSM(실좌표 그리드 셀 핀) vs 20team SVG 전국 코로플레스 유지 + HanQ 피드/칩/프라이버시 레이어. 백엔드(geohash 셀 + region 집계)는 둘 다 지원. UX 에이전트는 웹 SPA엔 SVG 유지를 권장.
+
+## 5. Firebase 프로젝트 설정 (`hanq-dev-17267`)
+
+**2026-07-22 결정**: 배포 타깃을 `hanq-b0a27`(20team 기존, 미설정) → **`hanq-dev-17267`(HanQ 기존 배포 프로젝트)**로 변경. 이유: Blaze 플랜·Firestore·Auth·Functions가 이미 세팅돼 있어 콘솔 준비 작업 대부분을 건너뛴다.
+
+이미 준비됨(HanQ가 세팅한 것 재사용):
+- Blaze(종량제) 플랜 — 활성 상태.
+- Firestore — 생성됨(HanQ 컬렉션과 공유). 서울 리전 여부는 확인.
+- Authentication — 이메일 + Google 활성.
+- Secret Manager: `GEMINI_API_KEY`, `HANQ_SIGNING_SECRET` — 이미 등록됨.
+- Functions 6종(`verify`/`reports`/`mapSummary`/`issuerQr`/`issuerDashboard`/`track`) — 이미 배포됨.
+
+이번 통합에서 할 일:
+1. `firebase login` CLI 권한 + `.firebaserc`를 `hanq-dev-17267`로 지정.
+2. 20team 웹 클라 Firebase 설정을 `hanq-dev-17267` 값으로(`VITE_FIREBASE_*`). Firebase 웹 config(apiKey/authDomain/projectId 등)는 브라우저 공개값이라 콘솔 또는 기존 HanQ 설정에서 가져옴.
+3. 병합 검증 엔진을 배포하면 hanq-dev-17267의 기존 `verify` 함수를 **in-place 업데이트**(같은 함수명). API 계약을 하위 호환으로 유지하면 HanQ 기존 프론트도 계속 동작.
+4. 클라이언트의 `VITE_GEMINI_API_KEY`는 제거(서버로 이동).
+
+**두 프론트가 한 백엔드를 공유**하는 구조가 된다(HanQ Next.js 사이트 + 20team Vite 앱). 함수는 in-place 업데이트라 이름 충돌 없음. Hosting은 별개 — 20team을 이 프로젝트에 배포하려면 별도 Hosting 사이트로(HanQ 기존 사이트 덮어쓰지 않도록) 하거나 로컬/타 호스팅. **개발·검증은 우선 Firebase 에뮬레이터로**, 실배포는 아래 "확인 필요" 후.
+
+**확인 필요(아웃풋 영향)**: 병합 엔진 실배포는 hanq-dev-17267의 **라이브 함수를 덮어씀** → HanQ 라이브 사이트도 새 엔진을 쓰게 됨(상위집합+Safe Browsing이라 개선 방향이나, 배포 전 사용자 승인).
 
 **보안**: 클라이언트의 `VITE_GEMINI_API_KEY`는 제거(서버로 이동). 시크릿은 코드/깃에 절대 넣지 않음(Secret Manager 경유). `.env*`는 훅으로 커밋 차단됨.
 
@@ -192,5 +243,6 @@ Firestore 컬렉션: `issuers/{id}`(+ `alerts`), `qr_codes/{qrId}`, `scan_logs`(
 
 - **프레임워크 불일치**: HanQ(Next.js) → 20team(Vite/React19) 재구현 공수. Leaflet·Firebase Auth·qrcode 등 신규 의존성.
 - **검증 점수 캡 정책**: S3 이식 규칙과 HanQ cap 40의 상호작용은 벤치마크(100+ 샘플)로 튜닝 필요. 통합 후 정확도 회귀 없는지 확인.
-- **Firebase 준비**: Blaze/Firestore/Auth/CLI 권한은 사용자 콘솔 작업 의존. 준비 전까지는 에뮬레이터로 개발.
+- **Firebase 준비**: 타깃을 `hanq-dev-17267`로 변경해 Blaze/Firestore/Auth/Secret은 이미 준비됨. 남은 것은 CLI 권한·웹 config·에뮬레이터 개발. 실배포는 라이브 함수 in-place 업데이트라 사용자 승인 후.
+- **라이브 백엔드 공유**: HanQ 프론트와 백엔드를 공유 → verify 계약 하위 호환 유지 필요(안 그러면 HanQ 사이트 회귀).
 - **두 저장소 계약 정렬**: 20team `VerificationResult` ↔ HanQ `VerifyResponse` 필드 매핑 시 result-page 렌더 로직 조정 필요.
