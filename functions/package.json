@@ -1,0 +1,23 @@
+{
+  "name": "functions",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions,firestore,hosting,auth",
+    "test": "node --test --experimental-strip-types src"
+  },
+  "engines": { "node": "22" },
+  "main": "lib/index.js",
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.1.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.25",
+    "@types/qrcode": "^1.5.5",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.3"
+  },
+  "private": true
+}
