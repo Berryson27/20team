@@ -12,6 +12,7 @@ import { checkSignature } from "./signature";
 import { followRedirects, redirectDetail } from "./redirect";
 import { runHeuristics } from "./heuristics";
 import { analyzeContent } from "./llm";
+import { checkSafeBrowsing, type SafeBrowsingResult } from "./safebrowsing";
 import { DEMO_RESULTS } from "./demo";
 
 // 총 예산: pro 모델 판독(~12~20초) 수용. 데모 경로는 캐시/서명이라 이 예산을 타지 않는다.
@@ -99,6 +100,11 @@ export async function verifyPayload(req: VerifyRequest): Promise<VerifyResponse>
     });
   }
 
+  // ── S5: Google Safe Browsing — S3/S4와 병렬로 지금 발사만 해두고(await 안 함),
+  // 최종 결합(S6) 직전에 회수한다. fetch가 in-flight인 동안 S3/S4가 진행되므로
+  // 직렬화로 인한 지연이 없다. 죽어도(null) 판정에 영향 없음(적층 원칙 §8).
+  const sbPromise: Promise<SafeBrowsingResult | null> = checkSafeBrowsing(redir.finalUrl);
+
   // ── S3: 도메인 휴리스틱
   let heurStart = Date.now();
   const heur = await runHeuristics(redir.finalUrl);
@@ -140,6 +146,19 @@ export async function verifyPayload(req: VerifyRequest): Promise<VerifyResponse>
   if (!heur.trusted && llm.analysis?.impersonates_brand && llm.analysis?.has_credential_form) {
     score = Math.max(score, 78);
   }
+
+  // ── S5 회수: Google Safe Browsing 매치 → score floor 90 (trust cap 포함 위 모든 캡을 override).
+  // Math.max를 trust cap 적용 "이후"에 두어, 신뢰 도메인이었어도 구글 블록리스트 등재면 90 이상 확보.
+  const sb = await sbPromise;
+  if (sb?.matched) {
+    score = Math.max(score, 90);
+    stages.push({
+      key: "blocklist", status: "done",
+      detail: `Google Safe Browsing 차단 (${sb.label ?? "위협"})`,
+      flags: ["blocklist"],
+    });
+  }
+
   const fallback = !llm.ran && !structurallyDanger && !heur.trusted;
   const confidence: Confidence = deriveConfidence({
     s3Completed: true, s4Ran: llm.ran, fallback,
@@ -149,13 +168,14 @@ export async function verifyPayload(req: VerifyRequest): Promise<VerifyResponse>
 
   // threatType 추론 (SAFE 판정엔 위협유형을 달지 않는다 — 정합성)
   threatType = llm.threatType;
+  if (!threatType && sb?.matched) threatType = "credential";
   if (!threatType && verdict !== "safe") {
     if (heur.brandImitated) threatType = "card_theft";
     else if (redir.hostChanged) threatType = "credential";
   }
   if (verdict === "safe") threatType = null;
 
-  const reasons = buildReasons({ redir, heur, llm, verdict });
+  const reasons = buildReasons({ redir, heur, llm, verdict, sb });
 
   return finalize({
     verdict, score, confidence,
@@ -177,10 +197,13 @@ function buildReasons(ctx: {
   heur: Awaited<ReturnType<typeof runHeuristics>>;
   llm: { analysis: import("./llmClient").PageAnalysis | null };
   verdict: "safe" | "warn" | "danger";
+  sb: SafeBrowsingResult | null;
 }): string[] {
-  const { redir, heur, llm } = ctx;
+  const { redir, heur, llm, sb } = ctx;
   const a = llm.analysis;
   const out: string[] = [];
+  // 0) 구글 Safe Browsing 블록리스트 매치 — 최우선 신호(다른 무엇보다 확실한 위협 증거)
+  if (sb?.matched) out.push(`Google Safe Browsing에 ${sb.label ?? "위협"}(으)로 등재된 사이트입니다`);
   // 1) 브랜드 사칭 (LLM 우선 — 도메인 불일치 전제, 그다음 한국 브랜드 휴리스틱)
   if (a?.impersonates_brand) out.push(`${a.impersonates_brand} 로그인 페이지를 사칭 — 공식이 아닌 ${redir.finalHost}`);
   else if (heur.brandImitated) out.push(`${heur.brandImitated} 공식 도메인이 아닌 ${redir.finalHost}`);

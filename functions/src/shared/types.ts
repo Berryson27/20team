@@ -15,7 +15,7 @@ export type ThreatType =
 export type Confidence = "high" | "medium" | "low";
 
 /** 검증 단계 키 (S2 진행 화면이 그대로 렌더) */
-export type StageKey = "signature" | "redirect" | "heuristics" | "llm";
+export type StageKey = "signature" | "redirect" | "heuristics" | "llm" | "blocklist";
 export type StageStatus = "done" | "skipped" | "error";
 
 export interface VerifyStage {
