@@ -53,3 +53,61 @@ export async function postVerify(payload: string): Promise<VerifyResponse> {
   if (!res.ok) throw new Error(`verify failed: ${res.status}`)
   return (await res.json()) as VerifyResponse
 }
+
+// ── 위험 지도 (GET /api/map/summary) ──────────────────────────────
+export type RegionLevel = 'high' | 'mid' | 'low'
+
+export interface MapCell {
+  geohash: string
+  lat: number
+  lng: number
+  count: number
+  topPlaceType: string
+  lastAt: string
+}
+export interface MapRegion {
+  regionCode: string
+  name: string
+  count: number
+  level: RegionLevel
+}
+export interface RecentReport {
+  at: string
+  regionName?: string
+  category?: string
+  placeType?: string
+}
+export interface MapSummaryResponse {
+  total: number
+  thisWeek: number
+  blockedToday: number
+  regions: MapRegion[]
+  cells: MapCell[]
+  byPlaceType: Record<string, number>
+  recent: RecentReport[]
+}
+
+/** 지역별 신고 집계(구 단위 히트맵). 원좌표는 서버에 저장되지 않는다. */
+export async function getMapSummary(): Promise<MapSummaryResponse> {
+  const res = await fetch('/api/map/summary')
+  if (!res.ok) throw new Error(`map summary failed: ${res.status}`)
+  return (await res.json()) as MapSummaryResponse
+}
+
+// ── 신고 (POST /api/reports) ─────────────────────────────────────
+export interface ReportBody {
+  category: string
+  placeType?: string
+  verifyId?: string
+  geo?: { lat: number; lng: number }
+  regionCode?: string
+}
+/** 위험 QR/URL을 신고한다. 위치는 서버가 geohash로 집계(원좌표 미저장). */
+export async function postReport(body: ReportBody): Promise<void> {
+  const res = await fetch('/api/reports', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`report failed: ${res.status}`)
+}
