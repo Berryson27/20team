@@ -119,9 +119,7 @@ HanQ 프론트는 Next.js + 인라인 스타일이므로 **코드를 그대로 �
 
 ### 4.1 실 위험 지도
 
-- **프론트 렌더(결정 필요, §4.5·§9)**: 두 안 중 택1 —
-  - (A) HanQ 방식: `korea-risk-map.tsx`를 Leaflet + OSM 타일로 교체(중심 `[37.5405,126.986]` zoom 11), `cells`를 원형 마커(반경 `300+count*55`m)로 렌더. 실좌표 그리드에 충실.
-  - (B) 20team 유지: SVG 전국 코로플레스(`@svg-maps/south-korea`)를 유지하고 region 집계로 색칠 + HanQ의 피드/칩/프라이버시/랭킹만 레이어. 웹 SPA 미관·정직성 우수(UX 에이전트 권장).
+- **프론트 렌더(2026-07-22 확정: HanQ Leaflet+OSM 방식)**: `korea-risk-map.tsx`를 Leaflet + OpenStreetMap 타일로 교체(중심 `[37.5405,126.986]` zoom 11), `cells`를 원형 마커(반경 `300+count*55`m, 색: ≥25 red / ≥12 amber / else indigo)로 렌더. cells 없으면 6개 서울 구 정적 폴백(`L.divIcon`). `@svg-maps/south-korea` 의존성 제거, `leaflet` 추가.
 - **공통(어느 안이든)**: 전체/이번주 통계 타일, 구 랭킹 그리드, 장소 유형 필터 칩(실카운트), 익명 최근 신고 피드(`timeAgo` 상대 시각), 프라이버시 배지("구 단위 히트맵 · 정확 좌표 미저장"), 신고 반영 배너.
 - **백엔드**: `map/summary.ts`(`GET /api/map/summary`) → `counters/global`, `map_agg`(top30), `map_cells`(top300), `reports`(latest8) 읽어 `MapSummaryResponse` 반환, `Cache-Control: no-store`.
 - **프라이버시 백본**: `geo/geohash.ts` — 원좌표 미저장. 인제스트 시 (a) 서울 구 행정코드+이름(25개 구 중심 최근접) (b) geohash-7(~153m 그리드) 디코드 중심만 핀 좌표로. BASE32 encode/decode + `SEOUL_DISTRICTS`.
@@ -180,7 +178,7 @@ HanQ 프론트는 Next.js + 인라인 스타일이므로 **코드를 그대로 �
 - 스캔 페이지 최근 검사 이력(판정 점 + 상대시간)
 - 이미지 업로드/카메라샷/URL 입력 3중 폴백, 스캔영역 코너 브래킷
 
-**지도 렌더 방식 — 결정 필요(§9 참조):** HanQ Leaflet+OSM(실좌표 그리드 셀 핀) vs 20team SVG 전국 코로플레스 유지 + HanQ 피드/칩/프라이버시 레이어. 백엔드(geohash 셀 + region 집계)는 둘 다 지원. UX 에이전트는 웹 SPA엔 SVG 유지를 권장.
+**지도 렌더 방식 — 2026-07-22 확정: HanQ Leaflet+OSM 교체**(실좌표 그리드 셀 핀). `@svg-maps/south-korea` 제거, `leaflet` 추가. 피드/칩/프라이버시/랭킹 레이어는 그 위에 얹음.
 
 ## 5. Firebase 프로젝트 설정 (`hanq-dev-17267`)
 
