@@ -1,5 +1,2 @@
-import { onRequest } from "firebase-functions/v2/https";
-
-export const verify = onRequest({ region: "us-central1", cors: true }, (_req, res) => {
-  res.json({ ok: true, stub: true });
-});
+export { verify } from "./verify/index.js";
+// 후속 단계에서 reports, mapSummary, issuerQr, issuerDashboard, track 추가
