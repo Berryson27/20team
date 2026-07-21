@@ -8,6 +8,7 @@ import { RiskGauge } from '@/components/risk-gauge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { ReportButton } from '@/components/report-button'
 import { readLastVerification, type VerificationResult } from '@/lib/verification'
 
 function useCountUp(target: number, duration = 900) {
@@ -54,11 +55,51 @@ const verdictCopy = {
   },
 }
 
-const dangerActions = [
+const DEFAULT_ACTIONS = [
   '링크를 열었다면 즉시 화면을 닫고, 아무 정보도 입력하지 마세요.',
   '앱(APK) 설치를 시작했다면 설치를 취소하고 다운로드 파일을 삭제하세요.',
   '이미 정보를 입력했다면 해당 은행·카드사에 바로 지급정지를 요청하세요.',
 ]
+
+const THREAT_ACTIONS: Record<string, string[]> = {
+  card_theft: [
+    '카드 번호·CVC·비밀번호를 절대 입력하지 마세요.',
+    '이미 입력했다면 카드사에 즉시 정지를 요청하세요 (카드 뒷면 번호 또는 1332).',
+    '문자·메신저로 받은 링크는 열지 말고 삭제하세요.',
+  ],
+  account_transfer: [
+    '계좌번호·이체·인증번호를 입력하거나 알려주지 마세요.',
+    '이미 이체했다면 은행 고객센터·1332로 지급정지를 요청하세요.',
+    '상대가 재촉해도 통화를 끊고 공식 번호로 다시 확인하세요.',
+  ],
+  apk_install: [
+    'APK 설치를 취소하고 다운로드한 파일을 삭제하세요.',
+    '이미 설치했다면 비행기모드로 바꾼 뒤 앱 삭제·기기 점검을 하세요.',
+    '같은 기기의 은행·간편결제 비밀번호를 즉시 변경하세요.',
+  ],
+  credential: [
+    '아이디·비밀번호·인증번호를 입력하지 마세요.',
+    '이미 입력했다면 해당 서비스 비밀번호를 지금 바로 변경하세요.',
+    '같은 비밀번호를 쓰는 다른 계정도 함께 변경하세요.',
+  ],
+  forgery: [
+    '이 QR은 정품 서명이 위조됐습니다. 결제·입력을 멈추세요.',
+    '매장·기관의 공식 앱이나 안내된 정식 경로로만 진행하세요.',
+    '주변에 붙은 의심 QR은 사진으로 신고해 주세요.',
+  ],
+}
+
+const THREAT_LABELS: Record<string, string> = {
+  card_theft: '카드정보 탈취',
+  account_transfer: '계좌이체 유도',
+  apk_install: '악성앱 설치',
+  credential: '로그인정보 탈취',
+  forgery: 'QR 위조',
+}
+
+function actionsFor(threat: string | null): string[] {
+  return (threat && THREAT_ACTIONS[threat]) || DEFAULT_ACTIONS
+}
 
 const hotlines = [
   { name: '경찰청 (사이버범죄 신고)', tel: '112' },
@@ -253,9 +294,12 @@ export function ResultPage() {
                 <div className="flex items-center gap-2">
                   <TriangleAlert className="size-4 text-danger" />
                   <h2 className="text-sm font-extrabold tracking-[-0.02em]">지금 이렇게 하세요</h2>
+                  {result.threatType && THREAT_LABELS[result.threatType] && (
+                    <Badge variant="danger" className="ml-auto shrink-0 px-2 py-0.5 text-[11px]">{THREAT_LABELS[result.threatType]}</Badge>
+                  )}
                 </div>
                 <ul className="mt-2.5 space-y-1.5">
-                  {dangerActions.map((action, index) => (
+                  {actionsFor(result.threatType).map((action, index) => (
                     <li key={action} className="flex gap-2 text-xs leading-5 text-muted-foreground">
                       <span className="font-black text-danger">{index + 1}.</span>
                       {action}
@@ -277,6 +321,7 @@ export function ResultPage() {
                     </a>
                   ))}
                 </div>
+                <ReportButton threatType={result.threatType} />
               </CardContent>
             </Card>
           )}

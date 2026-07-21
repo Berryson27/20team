@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "hanq-b0a27"
+    "default": "hanq-dev-17267",
+    "legacy": "hanq-b0a27"
   }
 }

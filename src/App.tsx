@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { GuidePage } from '@/pages/guide-page'
 import { ResultPage } from '@/pages/result-page'
 import { RiskMapPage } from '@/pages/risk-map-page'
+import { RPage } from '@/pages/r-page'
 import { ScanPage } from '@/pages/scan-page'
 import { ShowcasePage } from '@/pages/showcase-page'
 
@@ -12,6 +13,7 @@ export default function App() {
       <Route path="/" element={<Navigate to="/scan" replace />} />
       <Route path="/scan" element={<ScanPage />} />
       <Route path="/result" element={<ResultPage />} />
+      <Route path="/r/:qrId" element={<RPage />} />
       <Route path="/map" element={<RiskMapPage />} />
       <Route path="/guide" element={<GuidePage />} />
       <Route path="/showcase" element={<ShowcasePage />} />

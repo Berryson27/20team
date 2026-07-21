@@ -1,0 +1,49 @@
+rules_version = '2';
+
+// 한큐 Firestore 보안 규칙
+// 원칙(기획서 §5): 가맹점은 본인 데이터만 R/W, 스캔·신고 로그는 Functions만 W,
+// 집계(map_agg/map_cells)와 글로벌 카운터만 공개 R. 클라이언트 직접 쓰기 최소화.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+
+    // 발급자(개인·가게·단체): 본인만 읽기. 생성/수정은 소유자 본인(ownerUid == 로그인 uid)만.
+    match /issuers/{issuerId} {
+      allow read: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      allow delete: if false;
+
+      // 위조 알림 피드: 소유 발급자만 구독(onSnapshot). 쓰기는 Functions(admin)만.
+      match /alerts/{alertId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/issuers/$(issuerId)).data.ownerUid == request.auth.uid;
+        allow write: if false;
+      }
+    }
+
+    // 발급된 QR: 소유 발급자만 읽기. 발급은 Functions(admin)만.
+    match /qr_codes/{qrId} {
+      allow read: if isSignedIn()
+        && resource.data.ownerUid == request.auth.uid;
+      allow write: if false;
+    }
+
+    // 스캔 로그·신고 원본: 공개 R 불가, 쓰기는 Functions만.
+    match /scan_logs/{id} { allow read, write: if false; }
+    match /reports/{id}   { allow read, write: if false; }
+    match /events/{id}    { allow read, write: if false; }
+
+    // 레이트리밋 카운터: 클라 접근 불가, Functions(admin)만. (expireAt 로 TTL 자동 삭제 권장)
+    match /rate_limits/{id} { allow read, write: if false; }
+
+    // 지도 집계·격자·글로벌 카운터: 공개 읽기(익명 지도/라이브 카운터), 쓰기는 Functions만.
+    match /map_agg/{regionCode} { allow read: if true; allow write: if false; }
+    match /map_cells/{geohash}  { allow read: if true; allow write: if false; }
+    match /counters/{id}        { allow read: if true; allow write: if false; }
+
+    // 그 외 전부 차단
+    match /{document=**} { allow read, write: if false; }
+  }
+}
