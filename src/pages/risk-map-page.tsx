@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Info, Loader2, MapPin, TriangleAlert } from 'lucide-react'
+import { Info, Loader2, LocateFixed, MapPin, TriangleAlert } from 'lucide-react'
 
 import { AppShell } from '@/components/app-shell'
 import { KoreaRiskMap } from '@/components/korea-risk-map'
@@ -40,6 +40,18 @@ export function RiskMapPage() {
   const [data, setData] = useState<MapSummaryResponse | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [activeType, setActiveType] = useState<string | null>(null)
+  const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(null)
+  const [locating, setLocating] = useState(false)
+
+  function locateMe() {
+    if (!navigator.geolocation || locating) return
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (p) => { setUserLoc({ lat: p.coords.latitude, lng: p.coords.longitude }); setLocating(false) },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 },
+    )
+  }
 
   useEffect(() => {
     let alive = true
@@ -113,8 +125,19 @@ export function RiskMapPage() {
           <div className="absolute inset-0">
             {state === 'error'
               ? <div className="grid h-full place-items-center p-8 text-center text-sm text-muted-foreground">지도 데이터를 불러오지 못했습니다.</div>
-              : state === 'ready' ? <KoreaRiskMap cells={cells} /> : null}
+              : state === 'ready' ? <KoreaRiskMap cells={cells} userLocation={userLoc} /> : null}
           </div>
+          {state === 'ready' && (
+            <button
+              type="button"
+              onClick={locateMe}
+              className="absolute bottom-3 right-3 z-[500] inline-flex items-center gap-1.5 rounded-full border border-white/90 bg-white/90 px-3 py-2 text-xs font-semibold text-primary shadow-md backdrop-blur transition hover:bg-white"
+              aria-label="내 위치 보기"
+            >
+              {locating ? <Loader2 className="size-4 animate-spin" /> : <LocateFixed className="size-4" />}
+              내 위치
+            </button>
+          )}
         </Card>
 
         {/* 지역 랭킹 — 3열 컴팩트 그리드 */}

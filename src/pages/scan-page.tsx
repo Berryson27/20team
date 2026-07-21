@@ -11,6 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import QrScanner from 'qr-scanner'
 
 import { cn } from '@/lib/utils'
+import { getMapSummary } from '@/lib/api-client'
 import { decodeQrImage } from '@/lib/qr-decoder'
 import { readHistory, verifyPayload } from '@/lib/verification'
 
@@ -67,6 +68,7 @@ export function ScanPage() {
   const [cssZoom, setCssZoom] = useState(1)
   const [flashSupported, setFlashSupported] = useState(false)
   const [flashOn, setFlashOn] = useState(false)
+  const [counter, setCounter] = useState<{ blockedToday: number; total: number } | null>(null)
   const visibleHistory = showAllHistory ? history : history.slice(0, 1)
   const isBusy = isReadingQr || isLoading
   const canVerifyUrl = isHttpUrl(payload)
@@ -74,6 +76,15 @@ export function ScanPage() {
   useEffect(() => () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl)
   }, [previewUrl])
+
+  // 라이브 카운터 (오늘 차단 · 누적) — 지도 집계에서 가져온다.
+  useEffect(() => {
+    let alive = true
+    getMapSummary()
+      .then((d) => { if (alive) setCounter({ blockedToday: d.blockedToday, total: d.total }) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [])
 
   // 페이지 진입 시 카메라를 바로 켜고 QR을 실시간 인식한다. 권한 거부·카메라 없음이면 촬영 방식으로 폴백.
   useEffect(() => {
@@ -103,15 +114,15 @@ export function ScanPage() {
 
   // 카메라 시작 후 줌/플래시 지원 여부를 감지한다 (미지원이면 컨트롤을 숨긴다).
   async function detectCameraControls() {
-    const scanner = scannerRef.current
     const video = videoRef.current
-    if (!scanner || !video) return
-    try { setFlashSupported(await scanner.hasFlash()) } catch { setFlashSupported(false) }
+    if (!video) return
     const stream = video.srcObject
     const track = stream instanceof MediaStream ? stream.getVideoTracks()[0] ?? null : null
     trackRef.current = track
-    const caps = (track?.getCapabilities?.() ?? {}) as { zoom?: { min?: number; max?: number } }
+    const caps = (track?.getCapabilities?.() ?? {}) as { zoom?: { min?: number; max?: number }; torch?: boolean }
     hwZoomRef.current = !!(caps.zoom && typeof caps.zoom.max === 'number' && caps.zoom.max > 1)
+    setFlashSupported(!!caps.torch)
+    setFlashOn(false)
     setZoom(1)
     setCssZoom(1)
   }
@@ -130,11 +141,12 @@ export function ScanPage() {
   }
 
   async function toggleFlash() {
-    const scanner = scannerRef.current
-    if (!scanner) return
+    const track = trackRef.current
+    if (!track) return
+    const next = !flashOn
     try {
-      await scanner.toggleFlash()
-      setFlashOn(scanner.isFlashOn())
+      await track.applyConstraints({ advanced: [{ torch: next }] } as unknown as MediaTrackConstraints)
+      setFlashOn(next)
     } catch { /* 미지원/실패 무시 */ }
   }
 
@@ -261,45 +273,35 @@ export function ScanPage() {
               {isBusy && <span className="absolute grid size-11 place-items-center rounded-full border border-white/45 bg-[#172b45]/65 text-white backdrop-blur-md"><LoaderCircle className="size-5 animate-spin" /></span>}
             </div>
             )}
-            <div className="absolute left-1/2 top-1/2 size-36 -translate-x-1/2 -translate-y-1/2 sm:size-44">
-              <span className="absolute left-0 top-0 size-8 rounded-tl-xl border-l-2 border-t-2 border-[#5ef4ee]" />
-              <span className="absolute right-0 top-0 size-8 rounded-tr-xl border-r-2 border-t-2 border-[#5ef4ee]" />
-              <span className="absolute bottom-0 left-0 size-8 rounded-bl-xl border-b-2 border-l-2 border-[#5ef4ee]" />
-              <span className="absolute bottom-0 right-0 size-8 rounded-br-xl border-b-2 border-r-2 border-[#5ef4ee]" />
-              {!isBusy && <span className="absolute inset-x-3 top-1/2 h-0.5 bg-gradient-to-r from-transparent via-[#5ef4ee] to-transparent shadow-[0_0_20px_4px_rgba(94,244,238,0.7)]" />}
-            </div>
-            <div className="absolute inset-x-4 top-4 flex items-center justify-between text-white">
-              <Badge className="bg-black/20 text-white backdrop-blur"><Camera className="size-3.5" /> 안전 진단</Badge>
-              <span className="grid size-8 place-items-center rounded-full bg-black/20 backdrop-blur"><ShieldCheck className="size-4" /></span>
+            <div className={cn('absolute left-1/2 top-1/2 size-40 -translate-x-1/2 -translate-y-1/2 rounded-2xl sm:size-52', cameraState === 'active' && !isBusy && 'shadow-[0_0_0_9999px_rgba(4,18,34,0.5)]')}>
+              <span className="absolute left-0 top-0 size-8 rounded-tl-xl border-l-2 border-t-2 border-white" />
+              <span className="absolute right-0 top-0 size-8 rounded-tr-xl border-r-2 border-t-2 border-white" />
+              <span className="absolute bottom-0 left-0 size-8 rounded-bl-xl border-b-2 border-l-2 border-white" />
+              <span className="absolute bottom-0 right-0 size-8 rounded-br-xl border-b-2 border-r-2 border-white" />
+              {!isBusy && <span className="absolute inset-x-3 top-1/2 h-0.5 bg-gradient-to-r from-transparent via-[#8f7ff0] to-transparent shadow-[0_0_20px_4px_rgba(143,127,240,0.7)]" />}
             </div>
 
-            {cameraState === 'active' && !isBusy && (flashSupported || zoomLevels.length > 1) && (
-              <div className="absolute right-3 top-1/2 z-10 flex -translate-y-1/2 flex-col items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                {flashSupported && (
+            <div className="absolute inset-x-0 top-4 z-10 flex flex-col items-center gap-2 px-4 text-white">
+              <p className="text-sm font-bold tracking-[-0.02em] [text-shadow:0_1px_4px_rgba(0,0,0,0.45)]">찍기 전에, 확인하세요</p>
+              {counter && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/40 px-3 py-1 text-[11px] backdrop-blur">
+                  <span className="size-1.5 rounded-full bg-[#2fd98e]" /> 오늘 차단 <b className="tabular-nums">{counter.blockedToday}</b> · 누적 <b className="tabular-nums">{counter.total.toLocaleString()}</b>
+                </span>
+              )}
+            </div>
+
+            {cameraState === 'active' && !isBusy && (
+              <div className="absolute bottom-12 left-1/2 z-10 flex -translate-x-1/2 gap-1 rounded-full bg-black/45 p-1 backdrop-blur" onClick={(e) => e.stopPropagation()}>
+                {zoomLevels.map((z) => (
                   <button
+                    key={z}
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); void toggleFlash() }}
-                    aria-label="플래시"
-                    aria-pressed={flashOn}
-                    className={cn('grid size-9 place-items-center rounded-full backdrop-blur transition', flashOn ? 'bg-white text-[#172b45]' : 'bg-black/35 text-white')}
+                    onClick={(e) => { e.stopPropagation(); applyZoom(z) }}
+                    className={cn('grid h-7 min-w-9 place-items-center rounded-full px-2 text-xs font-bold transition', zoom === z ? 'bg-primary text-white' : 'text-white/90')}
                   >
-                    <Zap className="size-4" />
+                    {z}×
                   </button>
-                )}
-                {zoomLevels.length > 1 && (
-                  <div className="flex flex-col overflow-hidden rounded-full bg-black/35 backdrop-blur">
-                    {zoomLevels.map((z) => (
-                      <button
-                        key={z}
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); applyZoom(z) }}
-                        className={cn('grid size-9 place-items-center text-xs font-bold transition', zoom === z ? 'bg-white text-[#172b45]' : 'text-white')}
-                      >
-                        {z}×
-                      </button>
-                    ))}
-                  </div>
-                )}
+                ))}
               </div>
             )}
             <div className="absolute inset-x-4 bottom-3 text-center text-white sm:bottom-4">
@@ -316,14 +318,28 @@ export function ScanPage() {
             </div>
           </button>
 
-          <Button
-            variant="outline"
-            disabled={isBusy}
-            onClick={() => galleryInputRef.current?.click()}
-            className="h-11 w-full"
-          >
-            <Images className="size-4" /> 앨범에서 QR 이미지 선택
-          </Button>
+          <div className="flex gap-2">
+            {flashSupported && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isBusy}
+                onClick={() => void toggleFlash()}
+                aria-pressed={flashOn}
+                className={cn('h-11 shrink-0', flashOn && 'border-primary text-primary')}
+              >
+                <Zap className="size-4" /> 플래시
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              disabled={isBusy}
+              onClick={() => galleryInputRef.current?.click()}
+              className="h-11 flex-1"
+            >
+              <Images className="size-4" /> 앨범에서 QR 이미지 선택
+            </Button>
+          </div>
 
           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
             <input

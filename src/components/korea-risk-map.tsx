@@ -21,10 +21,11 @@ function cellColor(count: number): string {
   return '#5b6bd8'
 }
 
-export function KoreaRiskMap({ cells }: { cells: MapCell[] }) {
+export function KoreaRiskMap({ cells, userLocation }: { cells: MapCell[]; userLocation?: { lat: number; lng: number } | null }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const layerRef = useRef<L.LayerGroup | null>(null)
+  const userMarkerRef = useRef<L.LayerGroup | null>(null)
 
   // 지도 1회 초기화
   useEffect(() => {
@@ -78,6 +79,23 @@ export function KoreaRiskMap({ cells }: { cells: MapCell[] }) {
       }
     }
   }, [cells])
+
+  // 내 위치 마커 + 해당 위치로 이동
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    if (userMarkerRef.current) { userMarkerRef.current.remove(); userMarkerRef.current = null }
+    if (!userLocation) return
+    const group = L.layerGroup().addTo(map)
+    L.circleMarker([userLocation.lat, userLocation.lng], {
+      radius: 8, color: '#fff', weight: 3, fillColor: '#2563eb', fillOpacity: 1,
+    }).bindTooltip('내 위치', { direction: 'top' }).addTo(group)
+    L.circle([userLocation.lat, userLocation.lng], {
+      radius: 400, color: '#2563eb', weight: 1, fillColor: '#2563eb', fillOpacity: 0.1,
+    }).addTo(group)
+    userMarkerRef.current = group
+    map.setView([userLocation.lat, userLocation.lng], 14)
+  }, [userLocation])
 
   return (
     <div className="relative h-full w-full">
