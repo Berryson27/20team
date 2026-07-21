@@ -48,9 +48,11 @@ export function RiskMapPage() {
     return () => { alive = false }
   }, [])
 
-  const cells = data?.cells ?? []
+  const [activeType, setActiveType] = useState<string | null>(null)
+  const allCells = data?.cells ?? []
+  const cells = activeType ? allCells.filter((c) => c.topPlaceType === activeType) : allCells
   const regions = data?.regions ?? []
-  const recent = data?.recent ?? []
+  const recent = activeType ? (data?.recent ?? []).filter((r) => r.placeType === activeType) : (data?.recent ?? [])
   const placeTypes = Object.entries(data?.byPlaceType ?? {}).sort((a, b) => b[1] - a[1])
 
   return (
@@ -65,12 +67,32 @@ export function RiskMapPage() {
 
       {placeTypes.length > 0 && (
         <div className="mb-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] sm:mb-5">
-          {placeTypes.map(([type, count]) => (
-            <span key={type} className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-white/85 bg-white/70 px-4 text-sm font-semibold shadow-sm backdrop-blur">
-              <MapPin className="size-4 text-primary" />{placeLabel(type)}
-              <b className="text-primary">{count}</b>
-            </span>
-          ))}
+          {placeTypes.map(([type, count]) => {
+            const active = activeType === type
+            return (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setActiveType(active ? null : type)}
+                aria-pressed={active}
+                className={cn(
+                  'inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border px-4 text-sm font-semibold shadow-sm backdrop-blur transition',
+                  active
+                    ? 'border-primary bg-primary text-white'
+                    : 'border-white/85 bg-white/70 text-foreground hover:bg-white',
+                )}
+              >
+                <MapPin className={cn('size-4', active ? 'text-white' : 'text-primary')} />
+                {placeLabel(type)}
+                <b className={cn('tabular-nums', active ? 'text-white' : 'text-primary')}>{count}</b>
+              </button>
+            )
+          })}
+          {activeType && (
+            <button type="button" onClick={() => setActiveType(null)} className="inline-flex h-10 shrink-0 items-center rounded-xl px-3 text-sm font-semibold text-muted-foreground hover:text-foreground">
+              전체
+            </button>
+          )}
         </div>
       )}
 
@@ -82,7 +104,9 @@ export function RiskMapPage() {
           <div className="absolute inset-0">
             {state === 'error'
               ? <div className="grid h-full place-items-center p-8 text-center text-sm text-muted-foreground">지도 데이터를 불러오지 못했습니다.<br />잠시 후 다시 시도해 주세요.</div>
-              : <KoreaRiskMap cells={cells} />}
+              : state === 'ready'
+                ? <KoreaRiskMap cells={cells} />
+                : null}
           </div>
         </Card>
 
