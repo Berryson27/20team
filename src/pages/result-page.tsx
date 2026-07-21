@@ -8,7 +8,6 @@ import { RiskGauge } from '@/components/risk-gauge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { ReportButton } from '@/components/report-button'
 import { readLastVerification, type VerificationResult } from '@/lib/verification'
 
 function useCountUp(target: number, duration = 900) {
@@ -321,7 +320,6 @@ export function ResultPage() {
                     </a>
                   ))}
                 </div>
-                <ReportButton threatType={result.threatType} />
               </CardContent>
             </Card>
           )}
