@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import QrScanner from 'qr-scanner'
 
+import { cn } from '@/lib/utils'
 import { decodeQrImage } from '@/lib/qr-decoder'
 import { readHistory, verifyPayload } from '@/lib/verification'
 
@@ -46,6 +47,7 @@ export function ScanPage() {
   const galleryInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const scannerRef = useRef<QrScanner | null>(null)
+  const trackRef = useRef<MediaStreamTrack | null>(null)
   const busyRef = useRef(false)
   const runRef = useRef<((value: string, startIndex?: number) => Promise<void>) | null>(null)
   const [cameraState, setCameraState] = useState<CameraState>('starting')
@@ -59,6 +61,10 @@ export function ScanPage() {
   const [progressDetail, setProgressDetail] = useState('')
   const [history] = useState(() => readHistory())
   const [showAllHistory, setShowAllHistory] = useState(false)
+  const [zoomLevels, setZoomLevels] = useState<number[]>([])
+  const [zoom, setZoom] = useState(1)
+  const [flashSupported, setFlashSupported] = useState(false)
+  const [flashOn, setFlashOn] = useState(false)
   const visibleHistory = showAllHistory ? history : history.slice(0, 1)
   const isBusy = isReadingQr || isLoading
   const canVerifyUrl = isHttpUrl(payload)
@@ -84,20 +90,59 @@ export function ScanPage() {
     )
     scannerRef.current = scanner
     scanner.start()
-      .then(() => setCameraState('active'))
+      .then(() => { setCameraState('active'); void detectCameraControls() })
       .catch(() => setCameraState('unavailable'))
     return () => {
       scannerRef.current = null
+      trackRef.current = null
       scanner.destroy()
     }
   }, [])
+
+  // 카메라 시작 후 줌/플래시 지원 여부를 감지한다 (미지원이면 컨트롤을 숨긴다).
+  async function detectCameraControls() {
+    const scanner = scannerRef.current
+    const video = videoRef.current
+    if (!scanner || !video) return
+    try { setFlashSupported(await scanner.hasFlash()) } catch { setFlashSupported(false) }
+    const stream = video.srcObject
+    const track = stream instanceof MediaStream ? stream.getVideoTracks()[0] ?? null : null
+    trackRef.current = track
+    const caps = (track?.getCapabilities?.() ?? {}) as { zoom?: { min?: number; max?: number } }
+    if (caps.zoom && typeof caps.zoom.max === 'number') {
+      const min = caps.zoom.min ?? 1
+      const max = caps.zoom.max
+      const levels = [1, 2, 3].filter((z) => z >= min && z <= max)
+      setZoomLevels(levels.length > 1 ? levels : [])
+    } else {
+      setZoomLevels([])
+    }
+    setZoom(1)
+  }
+
+  function applyZoom(z: number) {
+    const track = trackRef.current
+    if (!track) return
+    track.applyConstraints({ advanced: [{ zoom: z }] } as unknown as MediaTrackConstraints)
+      .then(() => setZoom(z))
+      .catch(() => {})
+  }
+
+  async function toggleFlash() {
+    const scanner = scannerRef.current
+    if (!scanner) return
+    try {
+      await scanner.toggleFlash()
+      setFlashOn(scanner.isFlashOn())
+    } catch { /* 미지원/실패 무시 */ }
+  }
 
   function resumeCamera() {
     const scanner = scannerRef.current
     if (!scanner) return
     setCameraState('starting')
     scanner.start()
-      .then(() => setCameraState('active'))
+      .then(() => { setCameraState('active'); void detectCameraControls() })
       .catch(() => setCameraState('unavailable'))
   }
 
@@ -225,6 +270,36 @@ export function ScanPage() {
               <Badge className="bg-black/20 text-white backdrop-blur"><Camera className="size-3.5" /> 안전 진단</Badge>
               <span className="grid size-8 place-items-center rounded-full bg-black/20 backdrop-blur"><ShieldCheck className="size-4" /></span>
             </div>
+
+            {cameraState === 'active' && !isBusy && (flashSupported || zoomLevels.length > 1) && (
+              <div className="absolute right-3 top-1/2 z-10 flex -translate-y-1/2 flex-col items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                {flashSupported && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); void toggleFlash() }}
+                    aria-label="플래시"
+                    aria-pressed={flashOn}
+                    className={cn('grid size-9 place-items-center rounded-full backdrop-blur transition', flashOn ? 'bg-white text-[#172b45]' : 'bg-black/35 text-white')}
+                  >
+                    <Zap className="size-4" />
+                  </button>
+                )}
+                {zoomLevels.length > 1 && (
+                  <div className="flex flex-col overflow-hidden rounded-full bg-black/35 backdrop-blur">
+                    {zoomLevels.map((z) => (
+                      <button
+                        key={z}
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); applyZoom(z) }}
+                        className={cn('grid size-9 place-items-center text-xs font-bold transition', zoom === z ? 'bg-white text-[#172b45]' : 'text-white')}
+                      >
+                        {z}×
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="absolute inset-x-4 bottom-3 text-center text-white sm:bottom-4">
               <p key={progressIndex} className={`text-xs font-semibold sm:text-sm ${isBusy ? 'analysis-status-pop' : ''}`}>
                 {isBusy
