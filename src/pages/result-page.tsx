@@ -1,9 +1,8 @@
-import { AlertTriangle, Check, CheckCircle2, ChevronDown, Flag, HelpCircle, Info, RefreshCw, ShieldAlert } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Globe2, Info, LockKeyhole, RefreshCw, Route } from 'lucide-react'
 import { Link, Navigate, useLocation } from 'react-router-dom'
 
 import { AppShell } from '@/components/app-shell'
 import { PageHeading } from '@/components/page-heading'
-import { RiskGauge } from '@/components/risk-gauge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -11,28 +10,16 @@ import { readLastVerification, type VerificationResult } from '@/lib/verificatio
 
 const verdictCopy = {
   safe: {
-    badge: '안전해 보여요',
-    title: '큰 문제는 발견되지 않았어요',
-    action: '주소가 익숙한 곳인지 한 번만 확인하고 이용하세요.',
-    icon: CheckCircle2,
-    iconClass: 'bg-primary text-white',
-    surfaceClass: 'border-primary/20 bg-[linear-gradient(145deg,rgba(237,252,251,0.96),rgba(255,255,255,0.88))]',
+    badge: '낮음',
+    heroClass: 'from-[#079caa] via-[#10afbd] to-[#72e1df]',
   },
   warn: {
-    badge: '확인이 필요해요',
-    title: '바로 열지 말고 확인하세요',
-    action: '공식 앱이나 대표번호에서 같은 내용을 확인하세요.',
-    icon: HelpCircle,
-    iconClass: 'bg-warning text-white',
-    surfaceClass: 'border-warning/25 bg-[linear-gradient(145deg,rgba(255,249,235,0.96),rgba(255,255,255,0.88))]',
+    badge: '주의',
+    heroClass: 'from-[#e89a25] via-[#f4ad37] to-[#ffd166]',
   },
   danger: {
-    badge: '위험해요',
-    title: '이 링크는 열지 마세요',
-    action: '개인정보를 입력하거나 앱을 설치하면 안 됩니다.',
-    icon: ShieldAlert,
-    iconClass: 'bg-danger text-white',
-    surfaceClass: 'border-danger/25 bg-[linear-gradient(145deg,rgba(255,241,240,0.97),rgba(255,255,255,0.88))]',
+    badge: '위험',
+    heroClass: 'from-[#e94f58] via-[#ff675c] to-[#ff9a72]',
   },
 }
 
@@ -43,41 +30,105 @@ export function ResultPage() {
   if (!result) return <Navigate to="/scan" replace />
 
   const copy = verdictCopy[result.verdict]
-  const VerdictIcon = copy.icon
-  const badgeVariant = result.verdict === 'danger' ? 'danger' : result.verdict === 'warn' ? 'warning' : 'default'
-  const signals = result.signals.length
-    ? result.signals.slice().sort((a, b) => b.points - a.points).slice(0, 3)
-    : result.reasons.slice(0, 3).map((reason, index) => ({
-      id: `reason-${index}`, title: reason, detail: '검사 결과에서 확인한 내용입니다.', points: 0, level: 'warning' as const, stage: 'result',
-    }))
+  const sortedSignals = result.signals.slice().sort((a, b) => b.points - a.points)
+  const domainSignals = sortedSignals.filter((signal) => signal.stage === 'domain')
+  const redirectSignal = sortedSignals.find((signal) => signal.stage === 'redirect')
+  const redirectStage = result.stages.find((stage) => stage.id === 'redirect')
+  const actionSignals = sortedSignals.filter((signal) => ['sensitive-form', 'external-form', 'apk-prompt'].includes(signal.id))
+  const actionSignal = actionSignals[0]
+  const executableRisk = result.threatType === 'apk_install' && !actionSignal
+
+  const riskIndicators = [
+    {
+      id: 'domain',
+      title: '주소 신뢰도',
+      detail: domainSignals[0]?.title || '의심 신호 없음',
+      status: (domainSignals[0]?.level || 'safe') as 'safe' | 'warning' | 'danger',
+      icon: Globe2,
+    },
+    {
+      id: 'redirect',
+      title: '최종 연결 경로',
+      detail: redirectSignal?.title || '주소 변경 없음',
+      status: (redirectSignal ? redirectSignal.level : redirectStage?.status === 'warning' ? 'warning' : 'safe') as 'safe' | 'warning' | 'danger',
+      icon: Route,
+    },
+    {
+      id: 'action',
+      title: '정보·앱 설치 요구',
+      detail: actionSignal?.title || (executableRisk ? '앱 실행·설치 주소' : '민감정보 요구 없음'),
+      status: (actionSignal?.level || (executableRisk ? (result.verdict === 'danger' ? 'danger' : 'warning') : 'safe')) as 'safe' | 'warning' | 'danger',
+      icon: LockKeyhole,
+    },
+  ]
+
+  const indicatorAppearance = {
+    safe: { label: '안전', iconClass: 'bg-primary/10 text-primary', badgeVariant: 'default' as const },
+    warning: { label: '주의', iconClass: 'bg-warning/15 text-[#b96800]', badgeVariant: 'warning' as const },
+    danger: { label: '위험', iconClass: 'bg-danger/10 text-danger', badgeVariant: 'danger' as const },
+  }
 
   return (
     <AppShell hideMobileHeader>
       <div className="mx-auto max-w-3xl">
-        <PageHeading
-          eyebrow="QR CHECK RESULT"
-          title="진단 결과"
-          description={result.finalHost ? `${result.finalHost} 확인 결과` : 'QR 연결 확인 결과'}
-          backTo="/scan"
-        />
+        <div className="relative mb-4 flex h-10 items-center justify-center md:hidden">
+          <Link to="/scan" className="absolute left-0 grid size-10 place-items-center rounded-full text-foreground" aria-label="뒤로 가기">
+            <ArrowLeft className="size-6" />
+          </Link>
+          <h1 className="text-xl font-extrabold tracking-[-0.04em]">진단 결과</h1>
+        </div>
+        <div className="hidden md:block">
+          <PageHeading
+            eyebrow="QR CHECK RESULT"
+            title="진단 결과"
+            description={result.finalHost ? `${result.finalHost} 확인 결과` : 'QR 연결 확인 결과'}
+            backTo="/scan"
+          />
+        </div>
 
-        <div className="space-y-4">
-          <Card className={`overflow-hidden backdrop-blur-xl ${copy.surfaceClass}`}>
-            <CardContent className="p-5 sm:p-7">
-              <div className="flex items-start gap-4 sm:items-center sm:gap-5">
-                <span className={`grid size-14 shrink-0 place-items-center rounded-2xl shadow-sm sm:size-16 ${copy.iconClass}`}>
-                  <VerdictIcon className="size-7 sm:size-8" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <Badge variant={badgeVariant} className="mb-2">{copy.badge}</Badge>
-                  <h2 className="text-xl font-black tracking-[-0.045em] text-[#27364a] sm:text-2xl">{copy.title}</h2>
-                  <p className="mt-1.5 text-sm leading-6 text-muted-foreground">{copy.action}</p>
-                </div>
-                <RiskGauge score={result.score} verdict={result.verdict} compact />
+        <div>
+          <section className={`relative overflow-hidden rounded-[32px] bg-gradient-to-br px-6 pb-20 pt-7 text-center text-white shadow-[0_24px_70px_rgba(15,166,181,0.2)] sm:px-10 sm:pb-24 sm:pt-9 ${copy.heroClass}`}>
+            <div className="absolute -right-20 -top-20 size-72 rounded-full bg-white/25 blur-3xl" />
+            <div className="absolute -bottom-24 -left-16 size-64 rounded-full bg-[#173d78]/12 blur-3xl" />
+            <div className="relative">
+              <p className="text-base font-bold tracking-[-0.02em] text-white/90 sm:text-lg">피싱 위험 점수</p>
+              <div className="mt-2 flex items-end justify-center gap-2">
+                <strong className="text-[5.75rem] font-black leading-none tracking-[-0.09em] sm:text-[7rem]">{result.score}</strong>
+                <span className="pb-2 text-2xl font-semibold text-white/85 sm:pb-3 sm:text-3xl">/ 100</span>
+              </div>
+              <span className="mt-4 inline-flex min-w-24 items-center justify-center rounded-full bg-white px-6 py-2.5 text-xl font-extrabold text-primary shadow-sm sm:text-2xl">
+                {copy.badge}
+              </span>
+            </div>
+          </section>
+
+          <Card className="relative z-10 mx-3 -mt-14 border-white/90 bg-white/92 backdrop-blur-xl sm:mx-7 sm:-mt-16">
+            <CardContent className="p-4 sm:p-6">
+              <div className="mb-3 sm:mb-4">
+                <h2 className="text-lg font-extrabold tracking-[-0.035em] sm:text-xl">왜 이렇게 판단했나요?</h2>
+              </div>
+              <div className="space-y-2">
+                {riskIndicators.map((indicator) => {
+                  const appearance = indicatorAppearance[indicator.status]
+                  return (
+                    <div key={indicator.id} className="flex items-center gap-3 rounded-2xl bg-secondary/65 p-3 sm:p-4">
+                      <span className={`grid size-10 shrink-0 place-items-center rounded-xl ${appearance.iconClass}`}>
+                        <indicator.icon className="size-5" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-3">
+                          <strong className="text-sm">{indicator.title}</strong>
+                          <Badge variant={appearance.badgeVariant} className="shrink-0">{appearance.label}</Badge>
+                        </div>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">{indicator.detail}</p>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
 
               {result.fallback && (
-                <div className="mt-4 flex gap-2 rounded-xl bg-white/65 px-3 py-2.5 text-xs leading-5 text-muted-foreground">
+                <div className="mt-3 flex gap-2 rounded-xl bg-warning/10 px-3 py-2.5 text-xs leading-5 text-muted-foreground">
                   <Info className="mt-0.5 size-4 shrink-0 text-warning" />
                   일부 내용을 확인하지 못했어요. 안전하다고 단정하지 말고 주소를 다시 확인하세요.
                 </div>
@@ -85,36 +136,12 @@ export function ResultPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-white/85 bg-white/76 backdrop-blur-xl">
-            <CardContent className="p-5 sm:p-6">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div><h3 className="font-extrabold tracking-[-0.025em]">이렇게 판단했어요</h3><p className="mt-0.5 text-xs text-muted-foreground">중요한 내용만 보여드려요.</p></div>
-                <span className="text-xs font-semibold text-muted-foreground">{signals.length}개</span>
-              </div>
-              <div className="space-y-2.5">
-                {signals.map((item) => (
-                  <div key={item.id} className="flex gap-3 rounded-2xl bg-secondary/65 p-3.5">
-                    <span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full ${item.level === 'danger' ? 'bg-danger/12 text-danger' : 'bg-warning/15 text-[#b96800]'}`}>
-                      {item.level === 'danger' ? <AlertTriangle className="size-4" /> : <Check className="size-4" />}
-                    </span>
-                    <div className="min-w-0"><strong className="block text-sm">{item.title}</strong><p className="mt-0.5 text-xs leading-5 text-muted-foreground">{item.detail}</p></div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="grid gap-2.5 sm:grid-cols-2">
-            <Button asChild size="lg" className="w-full"><Link to="/scan"><RefreshCw /> 다른 QR 검사하기</Link></Button>
-            <Button variant="outline" size="lg" className="w-full"><Flag /> 의심 QR 신고하기</Button>
-          </div>
-
-          <details className="group rounded-2xl border border-white/85 bg-white/60 backdrop-blur-xl">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 text-sm font-bold">
-              검사 상세 보기
-              <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+          <details className="group mx-3 mt-3 overflow-hidden rounded-2xl border border-primary bg-white/70 backdrop-blur-xl sm:mx-7">
+            <summary className="flex h-12 cursor-pointer list-none items-center justify-center gap-2 px-5 text-sm font-bold text-primary sm:h-14">
+              상세 결과 보기
+              <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
             </summary>
-            <div className="border-t border-border/70 px-4 py-4">
+            <div className="border-t border-primary/15 bg-white/75 px-4 py-4">
               <p className="mb-4 text-xs leading-5 text-muted-foreground">위험 점수는 피싱 확률이 아니라 발견된 신호를 합산한 값입니다.</p>
               <div className="space-y-3">
                 {result.stages.map((stage) => (
@@ -126,6 +153,10 @@ export function ResultPage() {
               </div>
             </div>
           </details>
+
+          <div className="mx-3 mt-2.5 sm:mx-7">
+            <Button asChild size="lg" className="h-12 w-full sm:h-14"><Link to="/scan"><RefreshCw /> 다른 QR 검사하기</Link></Button>
+          </div>
         </div>
       </div>
     </AppShell>

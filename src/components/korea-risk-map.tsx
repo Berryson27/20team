@@ -46,8 +46,8 @@ export function KoreaRiskMap() {
             <path
               key={location.id}
               d={location.path}
-              fill="#fffaf0"
-              stroke="#ded5c6"
+              fill="#f8fbff"
+              stroke="#d8e6ee"
               strokeWidth="1.3"
               vectorEffect="non-scaling-stroke"
             />
