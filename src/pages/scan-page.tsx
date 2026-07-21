@@ -48,6 +48,7 @@ export function ScanPage() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const scannerRef = useRef<QrScanner | null>(null)
   const trackRef = useRef<MediaStreamTrack | null>(null)
+  const hwZoomRef = useRef(false)
   const busyRef = useRef(false)
   const runRef = useRef<((value: string, startIndex?: number) => Promise<void>) | null>(null)
   const [cameraState, setCameraState] = useState<CameraState>('starting')
@@ -61,8 +62,9 @@ export function ScanPage() {
   const [progressDetail, setProgressDetail] = useState('')
   const [history] = useState(() => readHistory())
   const [showAllHistory, setShowAllHistory] = useState(false)
-  const [zoomLevels, setZoomLevels] = useState<number[]>([])
+  const zoomLevels = [1, 2, 3]
   const [zoom, setZoom] = useState(1)
+  const [cssZoom, setCssZoom] = useState(1)
   const [flashSupported, setFlashSupported] = useState(false)
   const [flashOn, setFlashOn] = useState(false)
   const visibleHistory = showAllHistory ? history : history.slice(0, 1)
@@ -109,23 +111,22 @@ export function ScanPage() {
     const track = stream instanceof MediaStream ? stream.getVideoTracks()[0] ?? null : null
     trackRef.current = track
     const caps = (track?.getCapabilities?.() ?? {}) as { zoom?: { min?: number; max?: number } }
-    if (caps.zoom && typeof caps.zoom.max === 'number') {
-      const min = caps.zoom.min ?? 1
-      const max = caps.zoom.max
-      const levels = [1, 2, 3].filter((z) => z >= min && z <= max)
-      setZoomLevels(levels.length > 1 ? levels : [])
-    } else {
-      setZoomLevels([])
-    }
+    hwZoomRef.current = !!(caps.zoom && typeof caps.zoom.max === 'number' && caps.zoom.max > 1)
     setZoom(1)
+    setCssZoom(1)
   }
 
+  // 하드웨어 줌이 있으면 렌즈 줌을, 없으면(웹캠·에뮬레이터 등) 화면 디지털 줌으로 폴백한다.
   function applyZoom(z: number) {
+    setZoom(z)
     const track = trackRef.current
-    if (!track) return
-    track.applyConstraints({ advanced: [{ zoom: z }] } as unknown as MediaTrackConstraints)
-      .then(() => setZoom(z))
-      .catch(() => {})
+    if (hwZoomRef.current && track) {
+      track.applyConstraints({ advanced: [{ zoom: z }] } as unknown as MediaTrackConstraints)
+        .then(() => setCssZoom(1))
+        .catch(() => setCssZoom(z))
+    } else {
+      setCssZoom(z)
+    }
   }
 
   async function toggleFlash() {
@@ -247,7 +248,8 @@ export function ScanPage() {
               ref={videoRef}
               muted
               playsInline
-              className={`absolute inset-0 size-full object-cover transition-opacity duration-300 ${cameraState === 'active' ? 'opacity-100' : 'opacity-0'}`}
+              style={{ transform: cssZoom > 1 ? `scale(${cssZoom})` : undefined }}
+              className={`absolute inset-0 size-full object-cover transition-[transform,opacity] duration-300 ${cameraState === 'active' ? 'opacity-100' : 'opacity-0'}`}
             />
             {(cameraState !== 'active' || isBusy) && (
             <div className={`absolute left-1/2 top-1/2 grid size-28 -translate-x-1/2 -translate-y-1/2 place-items-center overflow-hidden rounded-2xl border border-white/35 bg-white/90 shadow-2xl sm:size-36 ${isBusy ? 'analysis-pulse' : ''}`}>
