@@ -11,7 +11,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import QrScanner from 'qr-scanner'
 
 import { cn } from '@/lib/utils'
-import { getMapSummary } from '@/lib/api-client'
 import { decodeQrImage } from '@/lib/qr-decoder'
 import { readHistory, verifyPayload } from '@/lib/verification'
 
@@ -50,6 +49,8 @@ export function ScanPage() {
   const scannerRef = useRef<QrScanner | null>(null)
   const trackRef = useRef<MediaStreamTrack | null>(null)
   const hwZoomRef = useRef(false)
+  const hwZoomMaxRef = useRef(1)
+  const pinchRef = useRef<{ dist: number; zoom: number } | null>(null)
   const busyRef = useRef(false)
   const runRef = useRef<((value: string, startIndex?: number) => Promise<void>) | null>(null)
   const [cameraState, setCameraState] = useState<CameraState>('starting')
@@ -68,7 +69,6 @@ export function ScanPage() {
   const [cssZoom, setCssZoom] = useState(1)
   const [flashSupported, setFlashSupported] = useState(false)
   const [flashOn, setFlashOn] = useState(false)
-  const [counter, setCounter] = useState<{ blockedToday: number; total: number } | null>(null)
   const visibleHistory = showAllHistory ? history : history.slice(0, 1)
   const isBusy = isReadingQr || isLoading
   const canVerifyUrl = isHttpUrl(payload)
@@ -76,15 +76,6 @@ export function ScanPage() {
   useEffect(() => () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl)
   }, [previewUrl])
-
-  // 라이브 카운터 (오늘 차단 · 누적) — 지도 집계에서 가져온다.
-  useEffect(() => {
-    let alive = true
-    getMapSummary()
-      .then((d) => { if (alive) setCounter({ blockedToday: d.blockedToday, total: d.total }) })
-      .catch(() => {})
-    return () => { alive = false }
-  }, [])
 
   // 페이지 진입 시 카메라를 바로 켜고 QR을 실시간 인식한다. 권한 거부·카메라 없음이면 촬영 방식으로 폴백.
   useEffect(() => {
@@ -121,6 +112,7 @@ export function ScanPage() {
     trackRef.current = track
     const caps = (track?.getCapabilities?.() ?? {}) as { zoom?: { min?: number; max?: number }; torch?: boolean }
     hwZoomRef.current = !!(caps.zoom && typeof caps.zoom.max === 'number' && caps.zoom.max > 1)
+    hwZoomMaxRef.current = caps.zoom?.max ?? 1
     setFlashSupported(!!caps.torch)
     setFlashOn(false)
     setZoom(1)
@@ -128,16 +120,34 @@ export function ScanPage() {
   }
 
   // 하드웨어 줌이 있으면 렌즈 줌을, 없으면(웹캠·에뮬레이터 등) 화면 디지털 줌으로 폴백한다.
+  // 버튼(1/2/3×)과 손가락 핀치 양쪽에서 호출된다 — z 는 1~4 로 클램프.
   function applyZoom(z: number) {
-    setZoom(z)
+    const clamped = Math.max(1, Math.min(4, z))
+    setZoom(clamped)
     const track = trackRef.current
     if (hwZoomRef.current && track) {
-      track.applyConstraints({ advanced: [{ zoom: z }] } as unknown as MediaTrackConstraints)
+      track.applyConstraints({ advanced: [{ zoom: Math.min(clamped, hwZoomMaxRef.current) }] } as unknown as MediaTrackConstraints)
         .then(() => setCssZoom(1))
-        .catch(() => setCssZoom(z))
+        .catch(() => setCssZoom(clamped))
     } else {
-      setCssZoom(z)
+      setCssZoom(clamped)
     }
+  }
+
+  // 두 손가락 핀치로 확대/축소.
+  function pinchDist(t: React.TouchList) {
+    return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+  }
+  function onCamTouchStart(e: React.TouchEvent) {
+    if (e.touches.length === 2) pinchRef.current = { dist: pinchDist(e.touches), zoom }
+  }
+  function onCamTouchMove(e: React.TouchEvent) {
+    if (e.touches.length === 2 && pinchRef.current) {
+      applyZoom(pinchRef.current.zoom * (pinchDist(e.touches) / pinchRef.current.dist))
+    }
+  }
+  function onCamTouchEnd(e: React.TouchEvent) {
+    if (e.touches.length < 2) pinchRef.current = null
   }
 
   async function toggleFlash() {
@@ -234,11 +244,19 @@ export function ScanPage() {
           onChange={(event) => { void handleQrImage(event.target.files?.[0]); event.currentTarget.value = '' }}
         />
 
+          <div className="px-1">
+            <h1 className="text-lg font-extrabold tracking-[-0.03em] sm:text-xl">의심스러운 QR, 열기 전에 확인하세요</h1>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground sm:text-sm">QR을 카메라에 비추면 자동으로 인식해 안전한지 먼저 검사해요. 손가락으로 확대·축소할 수 있어요.</p>
+          </div>
+
           <button
             type="button"
             disabled={isBusy}
             onClick={() => { if (cameraState !== 'active') cameraInputRef.current?.click() }}
-            className="relative block min-h-60 w-full flex-1 overflow-hidden rounded-[24px] bg-[linear-gradient(145deg,#26364e,#607188_52%,#27384d)] text-left transition-transform active:scale-[0.995] disabled:cursor-wait"
+            onTouchStart={onCamTouchStart}
+            onTouchMove={onCamTouchMove}
+            onTouchEnd={onCamTouchEnd}
+            className="relative block min-h-60 w-full flex-1 touch-none overflow-hidden rounded-[24px] bg-[linear-gradient(145deg,#26364e,#607188_52%,#27384d)] text-left transition-transform active:scale-[0.995] disabled:cursor-wait"
             aria-label={cameraState === 'active' ? '카메라에 QR을 비춰주세요' : '카메라로 QR 촬영하기'}
           >
             <div className="absolute inset-0 opacity-35 [background-image:radial-gradient(circle_at_30%_20%,#b7dfff_0,transparent_28%),radial-gradient(circle_at_80%_70%,#cfc5ff_0,transparent_24%)]" />
@@ -273,15 +291,6 @@ export function ScanPage() {
               {!isBusy && <span className="absolute inset-x-3 top-1/2 h-0.5 bg-gradient-to-r from-transparent via-[#8f7ff0] to-transparent shadow-[0_0_20px_4px_rgba(143,127,240,0.7)]" />}
             </div>
 
-            <div className="absolute inset-x-0 top-4 z-10 flex flex-col items-center gap-2 px-4 text-white">
-              <p className="text-sm font-bold tracking-[-0.02em] [text-shadow:0_1px_4px_rgba(0,0,0,0.45)]">찍기 전에, 확인하세요</p>
-              {counter && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/40 px-3 py-1 text-[11px] backdrop-blur">
-                  <span className="size-1.5 rounded-full bg-[#2fd98e]" /> 오늘 차단 <b className="tabular-nums">{counter.blockedToday}</b> · 누적 <b className="tabular-nums">{counter.total.toLocaleString()}</b>
-                </span>
-              )}
-            </div>
-
             {cameraState === 'active' && !isBusy && (
               <div className="absolute bottom-12 left-1/2 z-10 flex -translate-x-1/2 gap-1 rounded-full bg-black/45 p-1 backdrop-blur" onClick={(e) => e.stopPropagation()}>
                 {zoomLevels.map((z) => (
@@ -289,7 +298,7 @@ export function ScanPage() {
                     key={z}
                     type="button"
                     onClick={(e) => { e.stopPropagation(); applyZoom(z) }}
-                    className={cn('grid h-7 min-w-9 place-items-center rounded-full px-2 text-xs font-bold transition', zoom === z ? 'bg-primary text-white' : 'text-white/90')}
+                    className={cn('grid h-7 min-w-9 place-items-center rounded-full px-2 text-xs font-bold transition', Math.round(zoom) === z ? 'bg-primary text-white' : 'text-white/90')}
                   >
                     {z}×
                   </button>
