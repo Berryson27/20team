@@ -60,9 +60,9 @@ export function KoreaRiskMap({ cells }: { cells: MapCell[] }) {
         L.circle([c.lat, c.lng], {
           radius: 300 + c.count * 55,
           color,
-          weight: 1,
+          weight: 1.5,
           fillColor: color,
-          fillOpacity: 0.35,
+          fillOpacity: 0.2,
         })
           .bindTooltip(`${c.count}건 · ${c.topPlaceType ?? ''}`, { direction: 'top' })
           .addTo(layer)
