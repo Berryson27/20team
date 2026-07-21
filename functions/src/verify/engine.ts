@@ -7,12 +7,11 @@ import type {
   VerifyRequest, VerifyResponse, VerifyStage, ThreatType, Confidence,
 } from "../shared/types";
 import { config } from "../shared/admin";
-import { classifyPayload, combineScore, band, deriveConfidence } from "./scoring";
+import { classifyPayload, combineScore, band, deriveConfidence, isDecisivePhishing, shouldWarnUnverified } from "./scoring";
 import { checkSignature } from "./signature";
 import { followRedirects, redirectDetail } from "./redirect";
 import { runHeuristics } from "./heuristics";
 import { analyzeContent } from "./llm";
-import { checkSafeBrowsing, type SafeBrowsingResult } from "./safebrowsing";
 import { DEMO_RESULTS } from "./demo";
 
 // 총 예산: pro 모델 판독(~12~20초) 수용. 데모 경로는 캐시/서명이라 이 예산을 타지 않는다.
@@ -100,11 +99,6 @@ export async function verifyPayload(req: VerifyRequest): Promise<VerifyResponse>
     });
   }
 
-  // ── S5: Google Safe Browsing — S3/S4와 병렬로 지금 발사만 해두고(await 안 함),
-  // 최종 결합(S6) 직전에 회수한다. fetch가 in-flight인 동안 S3/S4가 진행되므로
-  // 직렬화로 인한 지연이 없다. 죽어도(null) 판정에 영향 없음(적층 원칙 §8).
-  const sbPromise: Promise<SafeBrowsingResult | null> = checkSafeBrowsing(redir.finalUrl);
-
   // ── S3: 도메인 휴리스틱
   let heurStart = Date.now();
   const heur = await runHeuristics(redir.finalUrl);
@@ -145,23 +139,27 @@ export async function verifyPayload(req: VerifyRequest): Promise<VerifyResponse>
   // ── S6: 합산 (신뢰 도메인은 캡으로 안전측 고정)
   let score = combineScore(redir.score, heur.score, llm.score);
   if (heur.trusted) score = Math.min(score, 15);
-  // 강한 콘텐츠 신호: 브랜드 사칭(비공식 도메인) + 자격증명/결제 폼 = 피싱 확정 → danger
-  // (프롬프트상 공식 도메인이면 사칭=null 이므로 정상 사이트 오탐 안전)
-  if (!heur.trusted && llm.analysis?.impersonates_brand && llm.analysis?.has_credential_form) {
+
+  // 콘텐츠·구조 강신호 = 피싱 확정 → danger (비신뢰 도메인 전제; 공식 도메인은 위 트러스트 캡).
+  // "모호하지 않은" 증거만: 브랜드 로그인 사칭+자격증명폼, 또는 폼이 외부 도메인·IP 로 전송.
+  // ⚠ 단순 APK 설치 유도는 여기서 danger 로 올리지 않는다(공식 스토어 안내 가능성). 실제 .apk/
+  //   intent:// 직접 타깃은 S0 하드오버라이드(95)가 이미 처리. (isDecisivePhishing 주석 참고)
+  if (!heur.trusted && isDecisivePhishing(llm.analysis, llm.flags)) {
     score = Math.max(score, 78);
   }
 
-  // ── S5 회수: Google Safe Browsing 매치 → score floor 90 (trust cap 포함 위 모든 캡을 override).
-  // Math.max를 trust cap 적용 "이후"에 두어, 신뢰 도메인이었어도 구글 블록리스트 등재면 90 이상 확보.
-  const sb = await sbPromise;
-  if (sb?.matched) {
-    score = Math.max(score, 90);
-    stages.push({
-      key: "blocklist", status: "done",
-      detail: `Google Safe Browsing 차단 (${sb.label ?? "위협"})`,
-      flags: ["blocklist"],
-    });
-  }
+  // 페이지를 못 읽어 AI 판독을 못 한 비신뢰 도메인은 '안전'으로 통과시키지 않는다 — 위험 단서가
+  // 하나라도 있으면 최소 '주의(warn=40)'. danger 아닌 warn 까지만(정상 접속불가 사이트 오탐 최소화).
+  const finalPath = (() => {
+    try { return new URL(redir.finalUrl).pathname.replace(/\/+$/, ""); } catch { return ""; }
+  })();
+  const unverifiedBump = shouldWarnUnverified({
+    trusted: heur.trusted, llmRan: llm.ran, structurallyDanger, score,
+    heurScore: heur.score, domainAgeDays: heur.domainAgeDays,
+    hitCaptcha: redir.hitCaptcha, pageUnreachable: redir.pageUnreachable,
+    hasPath: finalPath.length > 0,
+  });
+  if (unverifiedBump) score = 40;
 
   const fallback = !llm.ran && !structurallyDanger && !heur.trusted;
   const confidence: Confidence = deriveConfidence({
@@ -172,14 +170,13 @@ export async function verifyPayload(req: VerifyRequest): Promise<VerifyResponse>
 
   // threatType 추론 (SAFE 판정엔 위협유형을 달지 않는다 — 정합성)
   threatType = llm.threatType;
-  if (!threatType && sb?.matched) threatType = "credential";
   if (!threatType && verdict !== "safe") {
     if (heur.brandImitated) threatType = "card_theft";
     else if (redir.hostChanged) threatType = "credential";
   }
   if (verdict === "safe") threatType = null;
 
-  const reasons = buildReasons({ redir, heur, llm, verdict, sb });
+  const reasons = buildReasons({ redir, heur, llm, verdict, unverified: unverifiedBump });
 
   return finalize({
     verdict, score, confidence,
@@ -202,13 +199,13 @@ function buildReasons(ctx: {
   heur: Awaited<ReturnType<typeof runHeuristics>>;
   llm: { analysis: import("./llmClient").PageAnalysis | null };
   verdict: "safe" | "warn" | "danger";
-  sb: SafeBrowsingResult | null;
+  unverified: boolean;
 }): string[] {
-  const { redir, heur, llm, sb } = ctx;
+  const { redir, heur, llm, unverified } = ctx;
   const a = llm.analysis;
   const out: string[] = [];
-  // 0) 구글 Safe Browsing 블록리스트 매치 — 최우선 신호(다른 무엇보다 확실한 위협 증거)
-  if (sb?.matched) out.push(`Google Safe Browsing에 ${sb.label ?? "위협"}(으)로 등재된 사이트입니다`);
+  // 0) 페이지 미확인(접속 불가·차단·이동)으로 주의 상향된 케이스의 대표 사유
+  if (unverified) out.push("페이지 내용을 확인할 수 없어(접속 불가·차단) 안전을 보장할 수 없습니다");
   // 1) 브랜드 사칭 (LLM 우선 — 도메인 불일치 전제, 그다음 한국 브랜드 휴리스틱)
   if (a?.impersonates_brand) out.push(`${a.impersonates_brand} 로그인 페이지를 사칭 — 공식이 아닌 ${redir.finalHost}`);
   else if (heur.brandImitated) out.push(`${heur.brandImitated} 공식 도메인이 아닌 ${redir.finalHost}`);

@@ -65,3 +65,55 @@ export function deriveConfidence(opts: {
   if (!opts.s4Ran || opts.fallback) return "medium";
   return "high";
 }
+
+/**
+ * S4 콘텐츠·구조 강신호 = 피싱 확정(danger 상향 대상). 비신뢰 도메인 전제.
+ * "모호하지 않은" 증거만 여기 넣는다 — 오탐 방지가 핵심.
+ *  ① 브랜드 로그인/결제 UI 사칭 + 자격증명 폼 (프롬프트상 공식 도메인이면 impersonates_brand=null)
+ *  ② 비번/카드 입력 폼이 '다른 외부 도메인' 으로 전송(form_cross_domain)
+ *  ③ 폼이 raw IP 로 직접 전송(form_to_ip)
+ * ⚠ 단순 apk_prompt("앱 설치하세요")는 제외 — 공식 스토어 안내일 수 있어 모호. 실제 .apk/intent://
+ *    직접 타깃은 S0 하드오버라이드가 이미 처리한다. apk_prompt 는 scoreContent 의 가점(+30)으로만 반영.
+ */
+export function isDecisivePhishing(
+  analysis: { impersonates_brand: string | null; has_credential_form: boolean } | null,
+  llmFlags: string[],
+): boolean {
+  const a = analysis;
+  return (
+    (!!a?.impersonates_brand && !!a?.has_credential_form) ||
+    llmFlags.includes("form_cross_domain") ||
+    llmFlags.includes("form_to_ip")
+  );
+}
+
+/**
+ * 페이지를 못 읽어(삭제·클로킹·지역차단·리다이렉트 껍데기) AI 판독을 못 한 비신뢰 도메인을
+ * '안전'으로 통과시키지 않기 위한 최소 warn(=40) 상향 여부. (§0 "낮은 구조점수 ≠ 안전")
+ *
+ * 발동 전제: 비신뢰 + AI 미판독(llmRan=false) + 아직 구조상 위험확정 아님 + 현재 점수 < 40.
+ * 그 위에 '위험 단서'가 하나라도 있을 때만 올린다(정상이지만 일시 접속불가 사이트의 오탐 최소화):
+ *  - 구조 신호 존재(heurScore>0) / 신생·미상 도메인 연령(<90d or null) / 캡차벽 / 접속불가 / 경로 존재
+ */
+export function shouldWarnUnverified(opts: {
+  trusted: boolean;
+  llmRan: boolean;
+  structurallyDanger: boolean;
+  score: number;
+  heurScore: number;
+  domainAgeDays: number | null;
+  hitCaptcha: boolean;
+  pageUnreachable: boolean;
+  hasPath: boolean;
+}): boolean {
+  const contentUnverified = !opts.trusted && !opts.llmRan && !opts.structurallyDanger;
+  if (!contentUnverified || opts.score >= 40) return false;
+  return (
+    opts.heurScore > 0 ||
+    opts.domainAgeDays === null ||
+    opts.domainAgeDays < 90 ||
+    opts.hitCaptcha ||
+    opts.pageUnreachable ||
+    opts.hasPath
+  );
+}
