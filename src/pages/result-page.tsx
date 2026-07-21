@@ -1,4 +1,5 @@
-import { ArrowLeft, ChevronDown, Globe2, Info, LockKeyhole, RefreshCw, Route } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowLeft, Check, ChevronDown, Copy, Globe2, Info, LockKeyhole, PhoneCall, RefreshCw, Route, TriangleAlert } from 'lucide-react'
 import { Link, Navigate, useLocation } from 'react-router-dom'
 
 import { AppShell } from '@/components/app-shell'
@@ -11,20 +12,42 @@ import { readLastVerification, type VerificationResult } from '@/lib/verificatio
 const verdictCopy = {
   safe: {
     badge: '낮음',
+    badgeClass: 'text-primary',
+    headline: '뚜렷한 위험 신호가 없어요',
+    advice: '그래도 개인정보나 결제 정보를 입력하기 전에 주소를 한 번 더 확인하세요.',
     heroClass: 'from-[#079caa] via-[#10afbd] to-[#72e1df]',
   },
   warn: {
     badge: '주의',
+    badgeClass: 'text-[#b96800]',
+    headline: '의심 신호가 발견됐어요',
+    advice: '접속하더라도 로그인·카드·계좌 정보는 절대 입력하지 마세요.',
     heroClass: 'from-[#e89a25] via-[#f4ad37] to-[#ffd166]',
   },
   danger: {
     badge: '위험',
+    badgeClass: 'text-danger',
+    headline: '접속하지 마세요',
+    advice: '피싱 위험이 높은 주소입니다. 링크를 열거나 앱을 설치하지 마세요.',
     heroClass: 'from-[#e94f58] via-[#ff675c] to-[#ff9a72]',
   },
 }
 
+const dangerActions = [
+  '링크를 열었다면 즉시 화면을 닫고, 아무 정보도 입력하지 마세요.',
+  '앱(APK) 설치를 시작했다면 설치를 취소하고 다운로드 파일을 삭제하세요.',
+  '이미 정보를 입력했다면 해당 은행·카드사에 바로 지급정지를 요청하세요.',
+]
+
+const hotlines = [
+  { name: '경찰청 (사이버범죄 신고)', tel: '112' },
+  { name: '금융감독원 (지급정지·피해상담)', tel: '1332' },
+  { name: 'KISA 인터넷침해대응센터', tel: '118' },
+]
+
 export function ResultPage() {
   const location = useLocation()
+  const [copied, setCopied] = useState(false)
   const stateResult = (location.state as { result?: VerificationResult } | null)?.result
   const result = stateResult || readLastVerification()
   if (!result) return <Navigate to="/scan" replace />
@@ -37,6 +60,18 @@ export function ResultPage() {
   const actionSignals = sortedSignals.filter((signal) => ['sensitive-form', 'external-form', 'apk-prompt'].includes(signal.id))
   const actionSignal = actionSignals[0]
   const executableRisk = result.threatType === 'apk_install' && !actionSignal
+  const checkedUrl = result.chain?.at(-1) ?? result.finalHost
+
+  async function copyHost() {
+    if (!checkedUrl) return
+    try {
+      await navigator.clipboard.writeText(checkedUrl)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // 클립보드 권한이 없으면 조용히 무시한다.
+    }
+  }
 
   const riskIndicators = [
     {
@@ -96,14 +131,36 @@ export function ResultPage() {
                 <strong className="text-[5.75rem] font-black leading-none tracking-[-0.09em] sm:text-[7rem]">{result.score}</strong>
                 <span className="pb-2 text-2xl font-semibold text-white/85 sm:pb-3 sm:text-3xl">/ 100</span>
               </div>
-              <span className="mt-4 inline-flex min-w-24 items-center justify-center rounded-full bg-white px-6 py-2.5 text-xl font-extrabold text-primary shadow-sm sm:text-2xl">
+              <span className={`mt-4 inline-flex min-w-24 items-center justify-center rounded-full bg-white px-6 py-2.5 text-xl font-extrabold shadow-sm sm:text-2xl ${copy.badgeClass}`}>
                 {copy.badge}
               </span>
+              <p className="mt-3 text-lg font-extrabold tracking-[-0.02em] sm:text-xl">{copy.headline}</p>
+              <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-white/85 sm:text-sm">{copy.advice}</p>
             </div>
           </section>
 
           <Card className="relative z-10 mx-3 -mt-14 border-white/90 bg-white/92 backdrop-blur-xl sm:mx-7 sm:-mt-16">
             <CardContent className="p-4 sm:p-6">
+              {checkedUrl && (
+                <div className="mb-3 flex items-center gap-2 rounded-xl bg-secondary/65 px-3 py-2.5 sm:mb-4">
+                  <Globe2 className="size-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-semibold tracking-[0.08em] text-muted-foreground">검사한 주소</p>
+                    <p className="truncate text-sm font-bold" title={checkedUrl}>
+                      {result.chain && result.chain.length > 1 ? `${result.chain[0]} → ${checkedUrl}` : checkedUrl}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void copyHost()}
+                    className="grid size-8 shrink-0 place-items-center rounded-lg bg-white text-muted-foreground shadow-sm transition hover:text-foreground"
+                    aria-label="주소 복사"
+                  >
+                    {copied ? <Check className="size-4 text-primary" /> : <Copy className="size-4" />}
+                  </button>
+                </div>
+              )}
+
               <div className="mb-3 sm:mb-4">
                 <h2 className="text-lg font-extrabold tracking-[-0.035em] sm:text-xl">왜 이렇게 판단했나요?</h2>
               </div>
@@ -136,6 +193,40 @@ export function ResultPage() {
             </CardContent>
           </Card>
 
+          {result.verdict !== 'safe' && (
+            <Card className="mx-3 mt-3 border-danger/25 bg-white/85 backdrop-blur-xl sm:mx-7">
+              <CardContent className="p-4 sm:p-5">
+                <div className="flex items-center gap-2">
+                  <TriangleAlert className="size-4 text-danger" />
+                  <h2 className="text-sm font-extrabold tracking-[-0.02em]">지금 이렇게 하세요</h2>
+                </div>
+                <ul className="mt-2.5 space-y-1.5">
+                  {dangerActions.map((action, index) => (
+                    <li key={action} className="flex gap-2 text-xs leading-5 text-muted-foreground">
+                      <span className="font-black text-danger">{index + 1}.</span>
+                      {action}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-3 grid gap-1.5 sm:grid-cols-3">
+                  {hotlines.map((hotline) => (
+                    <a
+                      key={hotline.tel}
+                      href={`tel:${hotline.tel}`}
+                      className="flex items-center justify-between gap-2 rounded-xl bg-secondary/65 px-3 py-2.5 transition hover:bg-secondary"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-[11px] text-muted-foreground">{hotline.name}</span>
+                        <strong className="text-sm">{hotline.tel}</strong>
+                      </span>
+                      <PhoneCall className="size-4 shrink-0 text-primary" />
+                    </a>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <details className="group mx-3 mt-3 overflow-hidden rounded-2xl border border-primary bg-white/70 backdrop-blur-xl sm:mx-7">
             <summary className="flex h-12 cursor-pointer list-none items-center justify-center gap-2 px-5 text-sm font-bold text-primary sm:h-14">
               상세 결과 보기
@@ -151,6 +242,23 @@ export function ResultPage() {
                   </div>
                 ))}
               </div>
+
+              {sortedSignals.length > 0 && (
+                <>
+                  <p className="mb-2 mt-5 text-xs font-bold tracking-[0.08em] text-muted-foreground">발견된 위험 신호 {sortedSignals.length}건</p>
+                  <div className="space-y-2">
+                    {sortedSignals.map((signal) => (
+                      <div key={signal.id} className="flex items-start justify-between gap-3 rounded-xl bg-secondary/50 px-3 py-2.5">
+                        <div className="min-w-0">
+                          <strong className={`text-xs ${signal.level === 'danger' ? 'text-danger' : 'text-[#b96800]'}`}>{signal.title}</strong>
+                          <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{signal.detail}</p>
+                        </div>
+                        <span className="shrink-0 text-[11px] font-bold text-muted-foreground">+{signal.points}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </details>
 

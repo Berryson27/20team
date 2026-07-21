@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Camera, LoaderCircle, LockKeyhole, ShieldCheck, Zap } from 'lucide-react'
+import { Camera, Images, LoaderCircle, LockKeyhole, ShieldCheck, Zap } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { AppShell } from '@/components/app-shell'
@@ -30,6 +30,7 @@ function isHttpUrl(value: string) {
 export function ScanPage() {
   const navigate = useNavigate()
   const cameraInputRef = useRef<HTMLInputElement>(null)
+  const galleryInputRef = useRef<HTMLInputElement>(null)
   const [payload, setPayload] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -101,6 +102,13 @@ export function ScanPage() {
             className="hidden"
             onChange={(event) => { void handleQrImage(event.target.files?.[0]); event.currentTarget.value = '' }}
           />
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(event) => { void handleQrImage(event.target.files?.[0]); event.currentTarget.value = '' }}
+          />
 
           <div className="px-1 pt-1">
             <h2 className="text-base font-extrabold tracking-[-0.03em]">의심스러운 QR, 열기 전에 확인하세요</h2>
@@ -140,6 +148,15 @@ export function ScanPage() {
               {isBusy && <p className="mt-0.5 text-[11px] text-white/65">{progressIndex === 0 ? decodeMessage : progressSteps[progressIndex].detail}</p>}
             </div>
           </button>
+
+          <Button
+            variant="outline"
+            disabled={isBusy}
+            onClick={() => galleryInputRef.current?.click()}
+            className="h-11 w-full"
+          >
+            <Images className="size-4" /> 앨범에서 QR 이미지 선택
+          </Button>
 
           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
             <input

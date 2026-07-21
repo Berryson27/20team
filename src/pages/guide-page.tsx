@@ -53,10 +53,25 @@ export function GuidePage() {
             <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-white/10 text-[#65e2da]"><ShieldCheck /></span>
             <div>
               <h2 className="text-lg font-bold">이미 접속했거나 정보를 입력했나요?</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-white/65">관련 기관의 공식 연락처와 단계별 대응 방법을 연결할 수 있도록 확장 가능한 안내 영역입니다.</p>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-white/65">지체할수록 피해가 커집니다. 은행·카드사에 지급정지를 요청하고, 아래 번호로 바로 신고하세요.</p>
             </div>
           </div>
-          <span className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 px-5 text-sm font-semibold text-white/75"><PhoneCall className="size-4" /> 대응 안내 준비</span>
+          <div className="flex flex-col gap-2 sm:min-w-56">
+            {[
+              { name: '경찰청 사이버범죄', tel: '112' },
+              { name: '금융감독원 지급정지', tel: '1332' },
+              { name: 'KISA 침해대응센터', tel: '118' },
+            ].map((hotline) => (
+              <a
+                key={hotline.tel}
+                href={`tel:${hotline.tel}`}
+                className="inline-flex h-11 items-center justify-between gap-2 rounded-xl border border-white/15 bg-white/10 px-4 text-sm font-semibold text-white/90 transition hover:bg-white/20"
+              >
+                <span className="text-white/70">{hotline.name}</span>
+                <span className="flex items-center gap-1.5"><PhoneCall className="size-4 text-[#65e2da]" /> {hotline.tel}</span>
+              </a>
+            ))}
+          </div>
         </CardContent>
       </Card>
     </AppShell>
