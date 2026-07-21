@@ -56,11 +56,10 @@ const STAGE_LABELS: Record<ServerStageKey, string> = {
   redirect: '최종 목적지 추적',
   heuristics: '주소 위험 신호 검사',
   llm: 'AI 페이지 내용 판독',
-  blocklist: '위협 목록 대조',
 }
 
 // 위험을 직접 가리키는 서버 플래그 — 상세 단계 점 색을 위험(빨강)으로 표시한다.
-const DANGER_FLAGS = new Set(['signature_invalid', 'blocklist', 'ssrf', 'blocked_ssrf'])
+const DANGER_FLAGS = new Set(['signature_invalid', 'ssrf', 'blocked_ssrf'])
 
 // 서버 단계 상태(진행 상태: done/skipped/error)를 클라이언트 표시 색으로 옮긴다.
 // 판정·점수는 서버가 권위이며, 이 색은 상세 결과의 보조 표시일 뿐이다.

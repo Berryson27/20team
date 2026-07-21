@@ -5,6 +5,8 @@
 - 원본 참조 프로젝트: `/Volumes/ThinkingData SSD 1TB/jegal/AI codegate/HanQ` — 이하 "HanQ"
 - 배포 타깃: Firebase 프로젝트 `hanq-dev-17267` (HanQ가 이미 배포된 프로젝트 — Blaze/Firestore/Auth/Functions 세팅 완료. 2026-07-22 사용자 지정으로 `hanq-b0a27`에서 변경)
 
+> **2026-07-22 개정 — S5(Google Safe Browsing) 제거**: Google Safe Browsing API는 **비상업용 라이선스 전용**이라 상업 서비스인 한큐에서 사용 불가. S5 스테이지(`functions/src/verify/safebrowsing.ts`)를 완전히 제거했다. 아래 본문의 S5/Safe Browsing 관련 서술은 **당초 설계 기록**이며 현재 코드에는 없다. 대신 (a) 페이지를 못 읽은 비신뢰 도메인은 위험 단서가 있으면 warn 상향(`shouldWarnUnverified`), (b) danger 자동 상향은 브랜드사칭+자격증명폼 또는 폼의 외부도메인·IP 전송 등 "모호하지 않은 증거"로 한정(`isDecisivePhishing`). 상세는 memory `hanq-verdict-tuning` 참조.
+
 ## 1. 배경 / 목표
 
 두 저장소는 같은 "한큐" 큐싱(QR 피싱) 방지 앱의 두 갈래 구현이다.
@@ -69,8 +71,8 @@ HanQ의 **S0~S6 서버 파이프라인을 뼈대**로 삼고, 20team의 강점�
 | S2 리다이렉트 | HanQ | manual redirect, MAX_HOPS=3, SSRF 가드(사설 IP), 단축 URL 체인, HTTPS→HTTP 다운그레이드, 캡차 감지, iPhone Safari UA 위장. cap 25 |
 | S3 휴리스틱 | **두 엔진 합집합** | 아래 3.1 참조. cap 40 |
 | S4 AI 페이지 판독 | HanQ | 텍스트(Gemini) + DOM 구조(`dom.ts`) + 스크린샷 비전(`vision.ts`, thum.io). cap 45. trusted/구조상 danger(≥70)/판독불가/예산<6s면 스킵 |
-| **S5 Safe Browsing (신규)** | **20team** | Google Safe Browsing v4 threatMatches. 매치 시 블록리스트 70점 신호 + `score = max(score, 90)`. trust cap 무시(R20) |
-| S6 결합/판정 | HanQ + S5 | `raw = min(S2,25)+min(S3,40)+min(S4,45)` → clamp(0,100); trusted면 ≤15 캡; 강한 콘텐츠 룰(비trusted+브랜드사칭+자격증명폼 → ≥78); band: ≥70 danger / ≥40 warn / else safe. Safe Browsing 매치는 캡을 뚫고 ≥90 |
+| ~~S5 Safe Browsing~~ | — | **제거됨(2026-07-22, 비상업용 라이선스)**. 상단 개정 노트 참조 |
+| S6 결합/판정 | HanQ | `raw = min(S2,25)+min(S3,40)+min(S4,45)` → clamp(0,100); trusted면 ≤15 캡; **danger 상향(비trusted)**: 브랜드사칭+자격증명폼 또는 폼이 외부도메인·IP 전송(`isDecisivePhishing`) → ≥78; **warn 상향**: 페이지 미확인 비trusted + 위험단서(`shouldWarnUnverified`) → 40; band: ≥70 danger / ≥40 warn / else safe |
 
 ### 3.1 S3 휴리스틱 합집합 (누락 없이 상위집합)
 

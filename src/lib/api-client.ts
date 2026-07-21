@@ -10,7 +10,7 @@ export type ServerThreatType =
   | 'credential'
   | 'forgery'
   | null
-export type ServerStageKey = 'signature' | 'redirect' | 'heuristics' | 'llm' | 'blocklist'
+export type ServerStageKey = 'signature' | 'redirect' | 'heuristics' | 'llm'
 export type ServerStageStatus = 'done' | 'skipped' | 'error'
 
 export interface ServerVerifyStage {

@@ -364,6 +364,8 @@ git commit -m "feat: merge 20team url-analysis rules into S3 heuristics (union s
 
 ### Task 5: S5 Google Safe Browsing 스테이지 추가 (TDD)
 
+> **⚠️ 2026-07-22 철회(REVERTED)**: 이 태스크로 추가했던 S5 스테이지를 **완전히 제거**했다. Google Safe Browsing API는 비상업용 라이선스 전용이라 상업 서비스인 한큐에서 사용 불가(추가로 `SAFE_BROWSING_API_KEY` 미등록 시 `GEMINI_API_KEY` 폴백은 인증 실패로 항상 dead code였음). 대체 로직은 spec 문서 상단 개정 노트 + memory `no-google-safe-browsing`/`hanq-verdict-tuning` 참조. 아래 내용은 당초 실행 기록으로만 남긴다.
+
 **Files:**
 - Create: `functions/src/verify/safebrowsing.ts`, `functions/src/verify/safebrowsing.test.ts`
 - Modify: `functions/src/verify/engine.ts` (S3·S4와 병렬로 S5 호출, 매치 시 score floor 90)
