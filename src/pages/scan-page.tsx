@@ -256,13 +256,18 @@ export function ScanPage() {
           >
             <div className="absolute inset-0 opacity-35 [background-image:radial-gradient(circle_at_30%_20%,#b7dfff_0,transparent_28%),radial-gradient(circle_at_80%_70%,#cfc5ff_0,transparent_24%)]" />
             <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(4,18,34,0.08),rgba(4,18,34,0.36))]" />
-            <video
-              ref={videoRef}
-              muted
-              playsInline
-              style={{ transform: cssZoom > 1 ? `scale(${cssZoom})` : undefined }}
-              className={`absolute inset-0 size-full object-cover transition-[transform,opacity] duration-300 ${cameraState === 'active' ? 'opacity-100' : 'opacity-0'}`}
-            />
+            {/* 디지털 줌은 비디오가 아닌 래퍼에 적용한다 — qr-scanner가 비디오에 건 미러 transform을 덮어써 반전되는 것을 막는다. */}
+            <div
+              className="absolute inset-0 overflow-hidden transition-transform duration-300"
+              style={{ transform: cssZoom > 1 ? `scale(${cssZoom})` : undefined, transformOrigin: 'center center' }}
+            >
+              <video
+                ref={videoRef}
+                muted
+                playsInline
+                className={`size-full object-cover transition-opacity duration-300 ${cameraState === 'active' ? 'opacity-100' : 'opacity-0'}`}
+              />
+            </div>
             {(cameraState !== 'active' || isBusy) && (
             <div className={`absolute left-1/2 top-1/2 grid size-28 -translate-x-1/2 -translate-y-1/2 place-items-center overflow-hidden rounded-2xl border border-white/35 bg-white/90 shadow-2xl sm:size-36 ${isBusy ? 'analysis-pulse' : ''}`}>
               {previewUrl
