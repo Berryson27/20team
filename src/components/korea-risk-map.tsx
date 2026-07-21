@@ -100,8 +100,8 @@ export function KoreaRiskMap({ cells, userLocation }: { cells: MapCell[]; userLo
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full rounded-2xl [&_.leaflet-container]:rounded-2xl" />
-      {/* 색상 범례 (건수 기준) */}
-      <div className="pointer-events-none absolute left-3 top-3 z-[500] flex flex-col gap-1 rounded-xl border border-white/90 bg-white/90 px-2.5 py-2 text-[10px] font-medium text-muted-foreground shadow-sm backdrop-blur">
+      {/* 색상 범례 (건수 기준) — Leaflet +/- 컨트롤(좌상단)과 겹치지 않게 우상단 배치 */}
+      <div className="pointer-events-none absolute right-3 top-3 z-[500] flex flex-col gap-1 rounded-xl border border-white/90 bg-white/90 px-2.5 py-2 text-[10px] font-medium text-muted-foreground shadow-sm backdrop-blur">
         <span className="inline-flex items-center gap-1.5"><i className="size-2 rounded-full bg-[#ff675c]" /> 위험 25건+</span>
         <span className="inline-flex items-center gap-1.5"><i className="size-2 rounded-full bg-[#f4a532]" /> 주의 12~24건</span>
         <span className="inline-flex items-center gap-1.5"><i className="size-2 rounded-full bg-[#5b6bd8]" /> 안전 12건 미만</span>
