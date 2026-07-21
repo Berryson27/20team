@@ -12,6 +12,8 @@ export const config = {
   llmProvider: process.env.LLM_PROVIDER ?? "gemini",
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
   geminiModel: process.env.GEMINI_MODEL ?? "gemini-pro-latest",
+  /** primary 모델이 404/429/throw로 실패할 때 1회 재시도할 대체 모델(항상 유효한 -latest 별칭 권장) */
+  geminiFallbackModel: process.env.GEMINI_FALLBACK_MODEL ?? "gemini-flash-latest",
   signingSecret: process.env.HANQ_SIGNING_SECRET ?? "dev-insecure-secret",
   demoMode: (process.env.HANQ_DEMO_MODE ?? "false") === "true",
   /** 정품 QR 페이로드의 베이스 URL(호스팅 도메인). 배포 후 실제 URL로. */

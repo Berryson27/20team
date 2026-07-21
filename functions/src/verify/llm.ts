@@ -19,6 +19,15 @@ function mergeAnalyses(a: PageAnalysis | null, b: PageAnalysis | null): PageAnal
   };
 }
 
+/**
+ * S4 AI 실행 관측 상태 — "스킵"(호출 자체를 안 함)과 "실패"(호출했는데 죽음)를 구분한다.
+ * - "skipped": 신뢰 도메인/구조상 위험 확정/페이지 판독 불가/예산 부족 등으로 애초에 AI를 부르지 않음.
+ * - "ok": primary 모델 호출 성공.
+ * - "fallback": primary 실패 → fallback 모델로 재시도 성공.
+ * - "unavailable": primary+fallback 모두 실패(또는 클라이언트 자체가 사용 불가) → 휴리스틱/DOM만으로 판정.
+ */
+export type AiStatus = "skipped" | "ok" | "fallback" | "unavailable";
+
 export interface LlmStageResult {
   ran: boolean;
   score: number; // cap 45
@@ -26,6 +35,7 @@ export interface LlmStageResult {
   detail: string;
   analysis: PageAnalysis | null;
   threatType: ThreatType;
+  aiStatus: AiStatus;
 }
 
 /** HTML → 순수 텍스트(스크립트/스타일 제거, 공백 정리) */
@@ -53,7 +63,7 @@ function scoreContent(a: PageAnalysis): { score: number; flags: string[] } {
 
 const SKIP: LlmStageResult = {
   ran: false, score: 0, flags: [], detail: "판독 생략",
-  analysis: null, threatType: null,
+  analysis: null, threatType: null, aiStatus: "skipped",
 };
 
 /** 코드 구조 신호 채점 (폼이 외부 도메인/IP로 전송 = 강한 자격증명 탈취 증거) */
@@ -92,17 +102,26 @@ export async function analyzeContent(
   // 텍스트 판독 + 시각(스크린샷) 판독을 병렬로 (지연 최소화)
   let textAnalysis: PageAnalysis | null = null;
   let visionAnalysis: PageAnalysis | null = null;
+  let aiTextFailed = false;
   if (client.available) {
     [textAnalysis, visionAnalysis] = await Promise.all([
-      client.analyzePage(finalHost, text, structureSummary(structure)).catch(() => null),
+      client.analyzePage(finalHost, text, structureSummary(structure)).catch(() => {
+        aiTextFailed = true; // 성공(신호 없음)과 실패(throw)를 구분 — 관측용
+        return null;
+      }),
       analyzeScreenshot(finalHost, finalUrl),
     ]);
+  } else {
+    aiTextFailed = true; // 클라이언트 자체가 사용 불가(설정 누락 등) → AI 미동작으로 취급
   }
   const analysis = mergeAnalyses(textAnalysis, visionAnalysis);
 
+  const aiStatus: AiStatus = aiTextFailed ? "unavailable" : client.usedFallback ? "fallback" : "ok";
+
   const content = analysis ? scoreContent(analysis) : { score: 0, flags: [] as string[] };
   const score = Math.min(content.score + struct.score, 45); // S4 축 상한 45
-  const flags = [...content.flags, ...struct.flags];
+  const aiFlag = aiStatus === "ok" ? "ai_ok" : aiStatus === "fallback" ? "ai_fallback" : "ai_unavailable";
+  const flags = [...content.flags, ...struct.flags, aiFlag];
 
   const bits: string[] = [];
   if (analysis?.impersonates_brand) bits.push(`${analysis.impersonates_brand} 로그인 사칭`);
@@ -116,11 +135,13 @@ export async function analyzeContent(
     analysis?.threat_type ??
     (struct.flags.length ? "credential" : null);
 
-  const detail = bits.length
+  let detail = bits.length
     ? bits.join(" · ")
     : analysis
       ? "브랜드 사칭 없음 · 결제·입력 폼 없음 · 압박 문구 없음 (코드·텍스트 판독)"
       : "코드 구조 특이사항 없음";
+  if (aiStatus === "unavailable") detail += " (AI 미동작 · 휴리스틱 판독)";
+  else if (aiStatus === "fallback") detail += " (AI 폴백 모델 판독)";
 
-  return { ran: true, score, flags, detail, analysis, threatType };
+  return { ran: true, score, flags, detail, analysis, threatType, aiStatus };
 }

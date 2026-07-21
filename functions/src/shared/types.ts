@@ -58,6 +58,8 @@ export interface VerifyResponse {
   finalUrlHash: string | null; // URL 원문 미저장 — 해시만
   issuer?: { name: string } | null; // 서명 검증된 발급자(개인·가게·단체) 이름
   fallback: boolean;
+  /** S4(AI 페이지 판독)가 실제로 성공했는지(폴백 모델 포함) — additive, 하위호환. 없으면 S4가 스킵/미실행됐던 구경로. */
+  aiAnalyzed?: boolean;
 }
 
 /** 발급자 유형 (개인도 가게도 — 누구나 발급) */

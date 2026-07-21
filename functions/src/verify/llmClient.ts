@@ -2,7 +2,7 @@
  * LLM 프로바이더 추상화 (결정 §2: Gemini).
  * 검증엔진의 나머지 코드는 이 인터페이스만 안다 → 나중에 팀원 키/다른 모델로 교체 시 이 파일만.
  */
-import { config } from "../shared/admin";
+import { config } from "../shared/admin.ts";
 
 export interface PageAnalysis {
   impersonates_brand: string | null;
@@ -22,6 +22,8 @@ export interface LlmClient {
   analyzePage(finalHost: string, pageText: string, structureText?: string): Promise<PageAnalysis>;
   analyzeImage(finalHost: string, imageB64: string, mimeType: string): Promise<PageAnalysis>;
   available: boolean;
+  /** 마지막 성공한 호출이 fallback 모델을 썼는지(관측용 — llm.ts가 ai_ok/ai_fallback 판단에 사용) */
+  usedFallback: boolean;
 }
 
 const VISION_PROMPT = `너는 피싱 탐지 보안 분석가다. 아래는 검사 대상 웹페이지의 스크린샷(이미지)이다.
@@ -81,11 +83,63 @@ function randomMarker(host: string): string {
 }
 function pageLen(s: string): number { return s.length * 7 + 13; }
 
-class GeminiClient implements LlmClient {
+// primary 시도 타임아웃(pro 모델 지연 수용). fallback은 짧게 — 두 시도를 순차로 해도
+// 엔진 전체 예산(30s, engine.ts TOTAL_BUDGET_MS)을 크게 넘기지 않도록 절반 이하로 캡한다.
+const PRIMARY_TIMEOUT_MS = 22000;
+const FALLBACK_TIMEOUT_MS = 12000;
+
+export class GeminiClient implements LlmClient {
   available = true;
-  private endpoint: string;
-  constructor(private apiKey: string, model: string) {
-    this.endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  /** 마지막 성공 호출이 fallback 모델을 썼는지(관측용) */
+  usedFallback = false;
+
+  private apiKey: string;
+  private primaryModel: string;
+  private fallbackModel: string;
+
+  constructor(apiKey: string, primaryModel: string, fallbackModel: string) {
+    this.apiKey = apiKey;
+    this.primaryModel = primaryModel;
+    this.fallbackModel = fallbackModel;
+  }
+
+  private endpointFor(model: string): string {
+    return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  }
+
+  /** 모델 1개에 대한 단발 요청. 네트워크 오류/타임아웃은 null(비-throw)로 반환해 폴백 판단을 단순화한다. */
+  private async request(model: string, body: unknown, timeoutMs: number): Promise<Response | null> {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      return await fetch(`${this.endpointFor(model)}?key=${this.apiKey}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+    } catch {
+      return null; // abort/네트워크 오류 → fallback 시도로 넘어감
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** primary 모델로 시도 → non-2xx/throw면 fallback 모델로 1회 재시도. 둘 다 실패하면 throw(상위 catch가 unavailable 처리). */
+  private async generate(body: unknown): Promise<Response> {
+    const primary = await this.request(this.primaryModel, body, PRIMARY_TIMEOUT_MS);
+    if (primary && primary.ok) {
+      this.usedFallback = false;
+      return primary;
+    }
+    const fallback = await this.request(this.fallbackModel, body, FALLBACK_TIMEOUT_MS);
+    if (fallback && fallback.ok) {
+      this.usedFallback = true;
+      return fallback;
+    }
+    const primaryStatus = primary ? String(primary.status) : "network_error";
+    const fallbackStatus = fallback ? String(fallback.status) : "network_error";
+    throw new Error(`gemini primary=${primaryStatus} fallback=${fallbackStatus}`);
   }
 
   async analyzePage(finalHost: string, pageText: string, structureText?: string): Promise<PageAnalysis> {
@@ -101,25 +155,13 @@ class GeminiClient implements LlmClient {
         responseSchema: RESPONSE_SCHEMA,
       },
     };
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 22000); // pro 모델 지연 수용
-    try {
-      const res = await fetch(`${this.endpoint}?key=${this.apiKey}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-        signal: ctrl.signal,
-      });
-      if (!res.ok) throw new Error(`gemini ${res.status}`);
-      const data = (await res.json()) as {
-        candidates?: { content?: { parts?: { text?: string }[] } }[];
-      };
-      const text = data.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text ?? "{}";
-      const parsed = JSON.parse(text) as Partial<PageAnalysis>;
-      return normalize(parsed);
-    } finally {
-      clearTimeout(timer);
-    }
+    const res = await this.generate(body);
+    const data = (await res.json()) as {
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
+    };
+    const text = data.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text ?? "{}";
+    const parsed = JSON.parse(text) as Partial<PageAnalysis>;
+    return normalize(parsed);
   }
 
   async analyzeImage(finalHost: string, imageB64: string, mimeType: string): Promise<PageAnalysis> {
@@ -131,25 +173,16 @@ class GeminiClient implements LlmClient {
       ] }],
       generationConfig: { temperature: 0, responseMimeType: "application/json", responseSchema: RESPONSE_SCHEMA },
     };
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 22000);
-    try {
-      const res = await fetch(`${this.endpoint}?key=${this.apiKey}`, {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify(body), signal: ctrl.signal,
-      });
-      if (!res.ok) throw new Error(`gemini vision ${res.status}`);
-      const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-      const text = data.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text ?? "{}";
-      return normalize(JSON.parse(text) as Partial<PageAnalysis>);
-    } finally {
-      clearTimeout(timer);
-    }
+    const res = await this.generate(body);
+    const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+    const text = data.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text ?? "{}";
+    return normalize(JSON.parse(text) as Partial<PageAnalysis>);
   }
 }
 
 class UnavailableClient implements LlmClient {
   available = false;
+  usedFallback = false;
   async analyzePage(): Promise<PageAnalysis> { throw new Error("LLM_UNAVAILABLE"); }
   async analyzeImage(): Promise<PageAnalysis> { throw new Error("LLM_UNAVAILABLE"); }
 }
@@ -179,7 +212,11 @@ function resolveModel(m: string): string {
 
 export function getLlmClient(): LlmClient {
   if (config.llmProvider === "gemini" && config.geminiApiKey) {
-    return new GeminiClient(config.geminiApiKey, resolveModel(config.geminiModel));
+    return new GeminiClient(
+      config.geminiApiKey,
+      resolveModel(config.geminiModel),
+      resolveModel(config.geminiFallbackModel)
+    );
   }
   return new UnavailableClient();
 }

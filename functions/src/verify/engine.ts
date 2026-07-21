@@ -120,7 +120,11 @@ export async function verifyPayload(req: VerifyRequest): Promise<VerifyResponse>
   const s2s3 = combineScore(redir.score, heur.score, 0);
   const structurallyDanger = s2s3 >= 70;
   const canReadPage = !redir.pageUnreachable && redir.html.trim().length > 0;
-  let llm = { ran: false, score: 0, flags: [] as string[], detail: "판독 생략", analysis: null as null | import("./llmClient").PageAnalysis, threatType: null as ThreatType };
+  let llm = {
+    ran: false, score: 0, flags: [] as string[], detail: "판독 생략",
+    analysis: null as null | import("./llmClient").PageAnalysis, threatType: null as ThreatType,
+    aiStatus: "skipped" as import("./llm").AiStatus,
+  };
   if (heur.trusted) {
     // 공식 등록 도메인에 착지 = 그 브랜드 본인 → 사칭 아님. 판독 생략(오탐 방지).
     llm.detail = "공식 등록 도메인 — 판독 생략";
@@ -181,6 +185,7 @@ export async function verifyPayload(req: VerifyRequest): Promise<VerifyResponse>
     verdict, score, confidence,
     signature: { status: "absent" }, stages, reasons, threatType,
     finalUrlHash, issuer: null, fallback,
+    aiAnalyzed: llm.aiStatus === "ok" || llm.aiStatus === "fallback",
   });
 }
 
