@@ -4,7 +4,7 @@
     "build": "tsc",
     "build:watch": "tsc --watch",
     "serve": "npm run build && firebase emulators:start --only functions,firestore,hosting,auth",
-    "test": "node --test --experimental-strip-types src"
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
   },
   "engines": { "node": "22" },
   "main": "lib/index.js",
