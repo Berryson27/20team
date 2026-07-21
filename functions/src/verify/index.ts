@@ -7,17 +7,7 @@ import { GEMINI_API_KEY, HANQ_SIGNING_SECRET } from "../shared/secrets";
 import { trackTE } from "../shared/te";
 import type { VerifyRequest } from "../shared/types";
 import { verifyPayload } from "./engine";
-
-// TODO(map/reports 포팅 태스크): 원본은 "../geo/geohash"의 toRegion/regionName을 사용해
-// 정확 좌표를 구 단위 행정코드로 즉시 비식별화한다. geo/ 모듈은 map/reports 페이즈
-// 소관이라 이번 verify 파이프라인 이식 범위에서 제외했다(task-3-report.md 참고).
-// geo 모듈이 이식되면 아래 스텁을 지우고 "../geo/geohash" import로 교체할 것.
-function toRegion(_lat: number, _lng: number): { code: string; name: string } {
-  return { code: "00000", name: "unknown" };
-}
-function regionName(code: string): string {
-  return code;
-}
+import { toRegion, regionName } from "../geo/geohash";
 
 // IP당 분당 30회 (LLM 비용 폭탄 방어). 공유망 다수 사용자 대비 넉넉히.
 const VERIFY_RATE = { limit: 30, windowSec: 60 };
