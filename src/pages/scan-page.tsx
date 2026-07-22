@@ -1,29 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { Camera, ChevronDown, ChevronRight, Clock3, Images, LoaderCircle, LockKeyhole, ShieldCheck, Zap } from 'lucide-react'
+import { Images, LoaderCircle, Zap } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { AppShell } from '@/components/app-shell'
-import { PageHeading } from '@/components/page-heading'
 import { QrArt } from '@/components/qr-art'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import QrScanner from 'qr-scanner'
 
 import { cn } from '@/lib/utils'
 import { decodeQrImage } from '@/lib/qr-decoder'
-import { readHistory, verifyPayload } from '@/lib/verification'
+import { verifyPayload } from '@/lib/verification'
 
 type CameraState = 'starting' | 'active' | 'paused' | 'unavailable'
-
-const verdictDot = { safe: 'bg-primary', warn: 'bg-warning', danger: 'bg-danger' }
-const verdictLabel = { safe: '낮음', warn: '주의', danger: '위험' }
-
-function formatCheckedAt(iso: string) {
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return ''
-  return `${date.getMonth() + 1}.${date.getDate()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-}
 
 const progressSteps = [
   { label: 'QR 주소 추출', detail: '사진 속 QR을 읽고 있어요.' },
@@ -32,14 +20,6 @@ const progressSteps = [
   { label: '페이지 내용 분석', detail: '입력 폼과 유도 문구를 확인해요.' },
   { label: 'AI 최종 판독', detail: '발견한 신호를 종합하고 있어요.' },
 ]
-
-function isHttpUrl(value: string) {
-  try {
-    return ['http:', 'https:'].includes(new URL(value.trim()).protocol)
-  } catch {
-    return false
-  }
-}
 
 export function ScanPage() {
   const navigate = useNavigate()
@@ -54,7 +34,6 @@ export function ScanPage() {
   const busyRef = useRef(false)
   const runRef = useRef<((value: string, startIndex?: number) => Promise<void>) | null>(null)
   const [cameraState, setCameraState] = useState<CameraState>('starting')
-  const [payload, setPayload] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isReadingQr, setIsReadingQr] = useState(false)
@@ -62,16 +41,12 @@ export function ScanPage() {
   const [previewUrl, setPreviewUrl] = useState('')
   const [decodeMessage, setDecodeMessage] = useState(progressSteps[0].detail)
   const [progressDetail, setProgressDetail] = useState('')
-  const [history] = useState(() => readHistory())
-  const [showAllHistory, setShowAllHistory] = useState(false)
   const zoomLevels = [1, 2, 3]
   const [zoom, setZoom] = useState(1)
   const [cssZoom, setCssZoom] = useState(1)
   const [flashSupported, setFlashSupported] = useState(false)
   const [flashOn, setFlashOn] = useState(false)
-  const visibleHistory = showAllHistory ? history : history.slice(0, 1)
   const isBusy = isReadingQr || isLoading
-  const canVerifyUrl = isHttpUrl(payload)
 
   useEffect(() => () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl)
@@ -87,7 +62,6 @@ export function ScanPage() {
         if (busyRef.current || !result.data) return
         scanner.stop()
         setCameraState('paused')
-        setPayload(result.data)
         void runRef.current?.(result.data, 1)
       },
       { returnDetailedScanResult: true, preferredCamera: 'environment', maxScansPerSecond: 6, highlightScanRegion: false },
@@ -208,14 +182,12 @@ export function ScanPage() {
     if (!file) return
     busyRef.current = true
     setError('')
-    setPayload('')
     setIsReadingQr(true)
     setProgressIndex(0)
     setDecodeMessage(progressSteps[0].detail)
     setPreviewUrl(URL.createObjectURL(file))
     try {
       const result = await decodeQrImage(file, setDecodeMessage)
-      setPayload(result.data)
       setIsReadingQr(false)
       await runVerification(result.data, 1)
     } catch {

@@ -1,17 +1,45 @@
-# 검증된 명령어 (원문 그대로 사용할 것)
+# 검증 명령어
 
-## 금지
-- 아래 명령을 임의 변형하지 말 것. 변형이 필요하면 이유를 먼저 밝힌다.
+이 문서는 한큐 저장소의 설치, 품질 검사, 로컬 실행 명령을 한곳에 정리합니다.
 
-| 용도 | 명령 | 검증일 |
-|---|---|---|
-| 의존성 설치 | `npm install --no-audit --no-fund` | 2026-07-21 |
-| 빌드 | `npm run build` | 2026-07-21 |
-| 린트 | `npm run lint` | 2026-07-21 |
-| 개발 서버 | `npm run dev` | (스크립트 존재, 미검증) |
-| 판별 정확도 벤치마크 | `node --experimental-strip-types scripts/benchmark.ts` | 2026-07-21 |
+## 요구 환경
 
-## 참고
-- `.env`의 키 이름은 반드시 `VITE_GEMINI_API_KEY` (Vite는 `VITE_` 접두사만 클라이언트에 노출).
-- Safe Browsing 조회는 `VITE_SAFE_BROWSING_API_KEY`가 있으면 그 키를, 없으면 Gemini 키를 재사용한다. 해당 Google 프로젝트에서 Safe Browsing API를 활성화해야 동작하며, 미활성화 시 자동으로 건너뛴다.
-- 벤치마크는 `src/lib/url-analysis.ts` 로컬 판별 엔진을 라벨링된 URL 199건으로 채점한다.
+- Node.js 22
+- npm
+- 백엔드 에뮬레이터 실행 시 Firebase CLI
+
+## 설치
+
+| 대상 | 명령 |
+| --- | --- |
+| 프런트엔드 | `npm install --no-audit --no-fund` |
+| Firebase Functions | `npm --prefix functions install --no-audit --no-fund` |
+
+## 품질 검사
+
+| 용도 | 명령 | 최근 검증 |
+| --- | --- | --- |
+| 전체 제출 검사 | `npm run check` | 2026-07-22 |
+| 프런트 빌드 | `npm run build` | 2026-07-22 |
+| 린트 | `npm run lint` | 2026-07-22 |
+| 백엔드 빌드 | `npm --prefix functions run build` | 2026-07-22 |
+| 백엔드 테스트 | `npm test` | 2026-07-22 |
+| URL 판별 벤치마크 | `npm run benchmark` | 2026-07-22 |
+
+현재 백엔드 단위 테스트는 26개이며, 내부 벤치마크 데이터셋은 총 205건입니다.
+
+## 로컬 실행
+
+1. `functions/.env.example`을 `functions/.env`로 복사합니다.
+2. 필수 시크릿을 입력합니다.
+3. `npm --prefix functions run serve`로 Firebase 에뮬레이터를 실행합니다.
+4. 별도 터미널에서 `npm run dev`를 실행합니다.
+
+Vite의 `/api/*` 요청은 Firebase Hosting 에뮬레이터로 전달됩니다. 백엔드 없이 프런트만 실행하면 실제 진단 및 위험지도 API는 동작하지 않습니다.
+
+## 환경변수 원칙
+
+- 운영 환경의 `GEMINI_API_KEY`, `HANQ_SIGNING_SECRET`은 Firebase Secret Manager로 주입합니다.
+- 로컬 에뮬레이터에서만 `functions/.env`를 사용합니다.
+- 브라우저용 `VITE_*` API 키는 사용하지 않습니다.
+- 내부 벤치마크 결과는 회귀 확인용이며 실제 환경의 절대 정확도를 의미하지 않습니다.

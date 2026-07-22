@@ -32,7 +32,6 @@ export async function verifyPayload(req: VerifyRequest): Promise<VerifyResponse>
   const started = Date.now();
   const timeLeft = () => TOTAL_BUDGET_MS - (Date.now() - started);
   const stages: VerifyStage[] = [];
-  let threatType: ThreatType = null;
 
   const kind = classifyPayload(req.payload);
 
@@ -57,7 +56,7 @@ export async function verifyPayload(req: VerifyRequest): Promise<VerifyResponse>
   }
 
   // ── S1: 서명 검증 (하드 오버라이드)
-  let sigStart = Date.now();
+  const sigStart = Date.now();
   const sig = await checkSignature(req.payload);
   if (sig.status === "valid") {
     stages.push({ key: "signature", status: "done", detail: `정품 서명 일치 · ${sig.issuerName ?? "발급처"}`, durationMs: Date.now() - sigStart });
@@ -82,7 +81,7 @@ export async function verifyPayload(req: VerifyRequest): Promise<VerifyResponse>
   stages.push({ key: "signature", status: "done", detail: "서명 없음 — 일반 링크로 계속 검사", durationMs: Date.now() - sigStart });
 
   // ── S2: 리다이렉트 추적 (스킴 없는 페이로드는 https:// 보정된 URL로)
-  let redirStart = Date.now();
+  const redirStart = Date.now();
   const redir = await followRedirects(kind.normalizedUrl ?? req.payload);
   const finalUrlHash = sha256(redir.finalUrl);
   stages.push({
@@ -100,7 +99,7 @@ export async function verifyPayload(req: VerifyRequest): Promise<VerifyResponse>
   }
 
   // ── S3: 도메인 휴리스틱
-  let heurStart = Date.now();
+  const heurStart = Date.now();
   const heur = await runHeuristics(redir.finalUrl);
   stages.push({
     key: "heuristics", status: "done", detail: heur.detail,
@@ -169,7 +168,7 @@ export async function verifyPayload(req: VerifyRequest): Promise<VerifyResponse>
   const verdict = band(score, confidence);
 
   // threatType 추론 (SAFE 판정엔 위협유형을 달지 않는다 — 정합성)
-  threatType = llm.threatType;
+  let threatType = llm.threatType;
   if (!threatType && verdict !== "safe") {
     if (heur.brandImitated) threatType = "card_theft";
     else if (redir.hostChanged) threatType = "credential";

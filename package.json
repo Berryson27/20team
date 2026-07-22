@@ -1,13 +1,23 @@
 {
-  "name": "20team",
+  "name": "hanq",
   "private": true,
   "version": "0.1.0",
+  "description": "QR 링크에 접속하기 전에 큐싱 위험을 진단하는 웹 서비스",
+  "homepage": "https://hanq-dev-17267.web.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Berryson27/20team.git"
+  },
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "npm --prefix functions test",
+    "benchmark": "node --experimental-strip-types scripts/benchmark.ts",
+    "check": "npm run lint && npm run build && npm --prefix functions run build && npm test && npm run benchmark"
   },
   "dependencies": {
     "@google/genai": "^2.12.0",

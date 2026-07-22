@@ -1,6 +1,31 @@
-node_modules
-dist
+node_modules/
+dist/
+functions/lib/
+
+.firebase/
+.codex/
+output/
+design/
+.tmp_ffmpeg/
+.tmp_ffmpeg.zip
+ffmpeg-win32-x64.gz
+ffmpeg_tools_download.zip
+
 .env
-.env.local
+.env.*
+!.env.example
+!**/.env.example
+
+coverage/
+*.tsbuildinfo
 *.log
 .DS_Store
+
+# README에서 사용하는 대표 이미지 2개만 저장소에 포함합니다.
+/assets/*
+!/assets/hankyu-logo-square-blue-hires.png
+!/assets/hankyu-core-solution-infographic.png
+
+# 발표 자료 생성 과정의 중간 산출물입니다.
+/*.png
+/scripts/render_*.py

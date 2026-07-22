@@ -540,8 +540,13 @@ async function main() {
     const score = analyzeUrlLocallyOld(sample.url).score;
     const flagged = score >= FLAG_THRESHOLD;
     oldResults.push({ sample, score, flagged });
-    if (sample.label === "phish") (flagged ? oldCounts.tp++ : oldCounts.fn++);
-    else (flagged ? oldCounts.fp++ : oldCounts.tn++);
+    if (sample.label === "phish") {
+      if (flagged) oldCounts.tp++;
+      else oldCounts.fn++;
+    } else {
+      if (flagged) oldCounts.fp++;
+      else oldCounts.tn++;
+    }
   }
 
   // NEW 엔진 — 비동기(RDAP 포함), 전부 동시 실행해 오프라인 타임아웃(~2.5s)이 겹치게 함
@@ -554,8 +559,13 @@ async function main() {
     }),
   );
   for (const r of newResults) {
-    if (r.sample.label === "phish") (r.flagged ? newCounts.tp++ : newCounts.fn++);
-    else (r.flagged ? newCounts.fp++ : newCounts.tn++);
+    if (r.sample.label === "phish") {
+      if (r.flagged) newCounts.tp++;
+      else newCounts.fn++;
+    } else {
+      if (r.flagged) newCounts.fp++;
+      else newCounts.tn++;
+    }
   }
 
   const elapsedMs = Date.now() - t0;
